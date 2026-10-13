@@ -558,14 +558,21 @@ function minutos(hhmm) {
   return h * 60 + m;
 }
 
-function trabalhadoMin(p) {
+// Tempo no local (saída − entrada), sem descontos.
+function permanenciaMin(p) {
   if (!p || !ehHora(p.entrada) || !ehHora(p.saida)) return null;
   const t = minutos(p.saida) - minutos(p.entrada);
   return t > 0 ? t : null;
 }
 
-function saldoDia(p) {
-  const T = trabalhadoMin(p);
+// Tempo trabalhado = tempo no local − intervalo de almoço (descontado em todo dia com entrada e saída).
+function trabalhadoMin(p, almoco = 0) {
+  const P = permanenciaMin(p);
+  return P === null ? null : Math.max(0, P - almoco);
+}
+
+function saldoDia(p, almoco = 0) {
+  const T = trabalhadoMin(p, almoco);
   const tipo = TIPOS_DIA.includes(p?.tipo) ? p.tipo : 'normal';
   if (tipo === 'feriado' || tipo === 'ferias') {
     if (T !== null) return T;
@@ -573,6 +580,16 @@ function saldoDia(p) {
   }
   if (T === null) return null;
   return tipo === 'prova' ? Math.max(0, T - JORNADA_MIN) : T - JORNADA_MIN;
+}
+
+const ALMOCO_PADRAO_MIN = 60;
+function almocoMin(config) {
+  const g = (config || []).find((c) => c && c.id === 'geral');
+  const v = g && g.almoco_min;
+  return Number.isInteger(v) && v >= 0 && v <= 240 ? v : ALMOCO_PADRAO_MIN;
+}
+function validarAlmoco(v) {
+  return Number.isInteger(v) && v >= 0 && v <= 240 ? [] : ['O intervalo de almoço deve ser um número inteiro de minutos entre 0 e 240.'];
 }
 
 const hm = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
@@ -588,20 +605,21 @@ function inicioSemana(data) {
   return somarDias(data, -paraUTC(data).getUTCDay());
 }
 
-function resumoPonto(pontos, hoje, mes) {
+function resumoPonto(pontos, hoje, mes, almoco = 0) {
   const validos = pontos.filter((p) => p && ehData(p.data));
   let saldoMes = 0, saldoTotal = 0, semanaMin = 0;
   const ini = inicioSemana(hoje);
   const diasMes = [];
   for (const p of validos) {
-    const S = saldoDia(p);
-    const T = trabalhadoMin(p);
+    const S = saldoDia(p, almoco);
+    const T = trabalhadoMin(p, almoco);
+    const P = permanenciaMin(p);
     if (S !== null) {
       saldoTotal += S;
       if (p.data.slice(0, 7) === mes) saldoMes += S;
     }
     if (T !== null && p.data >= ini && p.data <= hoje) semanaMin += T;
-    if (p.data.slice(0, 7) === mes) diasMes.push({ ...p, T, S });
+    if (p.data.slice(0, 7) === mes) diasMes.push({ ...p, T, S, P });
   }
   diasMes.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));
   return { saldoMes, saldoTotal, semanaMin, diasMes };
@@ -639,7 +657,7 @@ function estadoBotaoPonto(p) {
 
 // store.js — acesso ao db do artifact (data/hub/{colecao}/{id}).
 
-const COLECOES = ['areas', 'disciplinas', 'eventos', 'tarefas', 'ponto'];
+const COLECOES = ['areas', 'disciplinas', 'eventos', 'tarefas', 'ponto', 'config'];
 
 function traduzirErro(e) {
   switch (e && e.code) {
@@ -757,11 +775,18 @@ function criarStore(db, relogio = () => new Date()) {
     return dias.length;
   }
 
+  async function salvarConfig(campos) {
+    const ref = doc('config', 'geral');
+    const atual = await ref.get();
+    if (atual.exists) await ref.update({ ...campos, atualizado_em: agora() });
+    else await ref.set({ ...campos, atualizado_em: agora() });
+  }
+
   function assinar(c, aoMudar, aoErro) {
     return col(c).onSnapshot((snap) => aoMudar(lista(snap)), (e) => aoErro(traduzirErro(e)));
   }
 
-  return { assinar, criar, atualizar, excluir, garantirAreas, itensDaDisciplina, excluirDisciplina, lerTudo, importar, baterPonto, salvarDia, marcarPeriodo };
+  return { assinar, criar, atualizar, excluir, garantirAreas, itensDaDisciplina, excluirDisciplina, lerTudo, importar, baterPonto, salvarDia, marcarPeriodo, salvarConfig };
 }
 
 // firebase-db.js — dá ao Cloud Firestore (SDK modular, injetado em `fs`) a interface `db` usada por store.js.
@@ -888,7 +913,7 @@ const estado = {
   usuario: null,
   fb: null,
   assinaturas: [],
-  dados: { areas: [], disciplinas: [], eventos: [], tarefas: [], ponto: [] },
+  dados: { areas: [], disciplinas: [], eventos: [], tarefas: [], ponto: [], config: [] },
   pronto: new Set(),
   mesVisivel: null,
   diaSelecionado: null,
@@ -1319,13 +1344,27 @@ TELAS.ajustes = (main, h0) => {
   const conta = bloco('Conta', h('div', { class: 'backup' },
     h('p', null, 'Conectado como ', h('strong', null, estado.usuario?.email || '—'), '.'),
     h('div', { class: 'acoes' }, h('button', { type: 'button', class: 'btn', onclick: () => sairDaConta(estado.fb) }, 'Sair'))));
-  main.append(h('div', { class: 'grade-ajustes' }, aparencia, cores, conta, backup));
+  const campoAlmoco = h('input', { type: 'number', id: 'cfg-almoco', min: 0, max: 240, step: 5, inputmode: 'numeric', value: almocoAtual() });
+  const erroAlmoco = h('div', { class: 'erros', role: 'alert' });
+  const ponto = bloco('Ponto', h('div', { class: 'backup' },
+    h('div', { class: 'campo' }, h('label', { for: 'cfg-almoco' }, 'Intervalo de almoço (minutos)'), campoAlmoco,
+      h('small', { class: 'muted' }, 'Descontado de todo dia com entrada e saída. Vale também para os dias já registrados.')),
+    h('div', { class: 'acoes' }, h('button', { type: 'button', class: 'btn', onclick: async () => {
+      erroAlmoco.replaceChildren();
+      const v = Number(campoAlmoco.value);
+      const erros = validarAlmoco(v);
+      if (erros.length) { erroAlmoco.append(h('p', null, erros[0])); return; }
+      try { await estado.store.salvarConfig({ almoco_min: v }); avisar('Intervalo de almoço salvo'); } catch (e) { avisar(traduzirErro(e), 'erro'); }
+    } }, 'Salvar intervalo')),
+    erroAlmoco));
+  main.append(h('div', { class: 'grade-ajustes' }, aparencia, cores, conta, ponto, backup));
 };
 
 // ---------- Ponto ----------
 const NOMES_TIPO_DIA = { normal: 'Normal', prova: 'Dia de prova', feriado: 'Feriado', ferias: 'Férias / recesso' };
 const ROTULO_TAG_DIA = { prova: 'prova', feriado: 'feriado', ferias: 'férias' };
 const pontoDoDia = (data) => estado.dados.ponto.find((p) => p.id === data || p.data === data);
+const almocoAtual = () => almocoMin(estado.dados.config);
 const temProvaHoje = (h0) => estado.dados.eventos.some((e) => e.tipo === 'prova' && e.data === h0);
 
 async function bater(h0, esperado, botao) {
@@ -1370,13 +1409,16 @@ function sugestaoProva(h0) {
 
 function resumoHoje(h0) {
   const p = pontoDoDia(h0);
-  const T = trabalhadoMin(p);
-  const S = saldoDia(p || { tipo: 'normal' });
+  const almoco = almocoAtual();
+  const P = permanenciaMin(p);
+  const T = trabalhadoMin(p, almoco);
+  const S = saldoDia(p || { tipo: 'normal' }, almoco);
   const linhas = [];
   if (p && p.tipo && p.tipo !== 'normal') linhas.push(h('span', { class: 'tag' }, ROTULO_TAG_DIA[p.tipo] || p.tipo));
   if (p && ehHora(p.entrada)) linhas.push(h('span', null, 'Entrada ', h('strong', { class: 'mono' }, p.entrada)));
   if (p && ehHora(p.saida)) linhas.push(h('span', null, 'Saída ', h('strong', { class: 'mono' }, p.saida)));
-  if (T !== null) linhas.push(h('span', null, 'Trabalhado ', h('strong', { class: 'mono' }, formatarDuracao(T))));
+  if (P !== null) linhas.push(h('span', null, 'No local ', h('strong', { class: 'mono' }, formatarDuracao(P))));
+  if (T !== null) linhas.push(h('span', null, `Trabalhado (−${formatarDuracao(almoco)} almoço) `, h('strong', { class: 'mono' }, formatarDuracao(T))));
   else if (p && ehHora(p.entrada) && !ehHora(p.saida)) {
     const corrido = minutos(horaSP(new Date())) - minutos(p.entrada);
     if (corrido > 0) linhas.push(h('span', { class: 'muted' }, 'em andamento há ', h('strong', { class: 'mono' }, formatarDuracao(corrido))));
@@ -1391,11 +1433,12 @@ function cardPonto(h0) {
 
 TELAS.ponto = (main, h0) => {
   const mes = estado.mesPonto || h0.slice(0, 7);
-  main.append(topo('Ponto', 'Jornada de 6 h por dia · banco de horas',
+  main.append(topo('Ponto', `Jornada de 6 h por dia · desconto de ${formatarDuracao(almocoAtual())} de almoço · banco de horas`,
     h('button', { type: 'button', class: 'btn', onclick: () => abrirFormulario('periodo', null, { de: h0, ate: h0, tipo: 'feriado' }) }, 'Feriado ou férias'),
     h('button', { type: 'button', class: 'btn primario', onclick: () => abrirFormulario('ponto', null, { data: h0, tipo: 'normal' }) }, '+ Adicionar dia')));
   if (carregando('ponto')) { main.append(textoVazio('Carregando…')); return; }
-  const r = resumoPonto(estado.dados.ponto, h0, mes);
+  const almoco = almocoAtual();
+  const r = resumoPonto(estado.dados.ponto, h0, mes, almoco);
   const semanaPct = Math.min(100, (r.semanaMin / (30 * 60)) * 100);
   const cls = (v) => 'mono saldo ' + (v < 0 ? 'neg' : v > 0 ? 'pos' : '');
   const resumo = bloco('Resumo', h('div', { class: 'resumo-ponto' },
@@ -1416,7 +1459,7 @@ TELAS.ponto = (main, h0) => {
       h('span', { class: 'item-titulo mono' }, `${d.entrada || '--:--'} → ${d.saida || '--:--'}`),
       d.tipo && d.tipo !== 'normal' ? h('span', { class: 'tag' }, ROTULO_TAG_DIA[d.tipo] || d.tipo) : null,
       d.editado ? h('span', { class: 'tag atrasada' }, 'editado') : null,
-      h('span', { class: 'mono muted' }, d.T !== null ? formatarDuracao(d.T) : ''),
+      h('span', { class: 'mono muted', title: d.P !== null ? `No local ${formatarDuracao(d.P)}` : '' }, d.T !== null ? formatarDuracao(d.T) : ''),
       h('span', { class: cls(d.S ?? 0) + ' saldo-dia' }, d.S === null ? 'aberto' : formatarSaldo(d.S))))))
     : textoVazio('Nenhum registro neste mês.');
   main.append(h('div', { class: 'grade-ponto' },

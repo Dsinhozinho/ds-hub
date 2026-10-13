@@ -1,0 +1,1778 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ds Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>/* Layout: menu lateral fixo (painel de controle pessoal) + coluna de trabalho; no celular o menu vira barra inferior.
+   Tema escuro é o padrão do hub; o claro só entra por escolha em Ajustes (data-tema="claro"). */
+:root {
+  --bg: #0f1218;
+  --surface: #161a22;
+  --surface-2: #1d222c;
+  --line: #2a303c;
+  --fg: #e7eaf0;
+  --muted: #8c95a8;
+  --accent: #7aa2ff;
+  --on-accent: #0b1020;
+  --ok: #4cc38a;
+  --warn: #e8b339;
+  --crit: #ef6461;
+  --sombra: 0 12px 40px rgb(0 0 0 / 0.45);
+  --f-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --f-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+  --area-faculdade: #5b8cff;
+  --area-trabalho: #f2a93b;
+  --area-pessoal: #3cc98b;
+  --r: 10px;
+  color-scheme: dark;
+}
+:root[data-tema="claro"] {
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #eceef3;
+  --line: #d9dde6;
+  --fg: #161a22;
+  --muted: #5d6578;
+  --accent: #3a63d8;
+  --on-accent: #ffffff;
+  --ok: #1f8f5a;
+  --warn: #a8740a;
+  --crit: #c93a37;
+  --sombra: 0 12px 40px rgb(20 30 60 / 0.18);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 var(--f-body);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+h1, h2, h3 { font-family: var(--f-display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; font-weight: 600; }
+.mono, time, .num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- casca ---------- */
+.app { min-height: 100%; }
+.carregando, .estado-tela { padding: 48px 24px; max-width: 520px; margin: 0 auto; }
+.estado-tela h1 { margin-bottom: 8px; }
+.estado-tela p { color: var(--muted); margin: 0; }
+
+.casca { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100%; }
+.menu {
+  position: sticky; top: env(safe-area-inset-top, 0px); align-self: start;
+  height: 100vh; display: flex; flex-direction: column; gap: 4px;
+  padding: 24px 14px; border-right: 1px solid var(--line); background: var(--surface);
+}
+.marca { padding: 0 10px 18px; display: grid; gap: 2px; }
+.marca strong { font-family: var(--f-display); font-size: 1.35rem; letter-spacing: -0.02em; }
+.marca time { font-size: 0.8rem; color: var(--muted); }
+.menu button {
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  border: 0; background: none; padding: 9px 10px; border-radius: 8px; cursor: pointer; color: var(--muted);
+}
+.menu button:hover { background: var(--surface-2); color: var(--fg); }
+.menu button[aria-current="page"] { background: var(--surface-2); color: var(--fg); font-weight: 600; }
+.menu svg { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+.conteudo { padding: 28px 32px 48px; min-width: 0; display: grid; gap: 22px; align-content: start; max-width: 1180px; }
+.topo { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.topo p { margin: 4px 0 0; color: var(--muted); }
+
+@media (max-width: 640px) {
+  .casca { grid-template-columns: minmax(0, 1fr); }
+  .menu {
+    position: fixed; inset: auto 0 0 0; top: auto; height: auto; z-index: 20;
+    flex-direction: row; justify-content: space-around; gap: 0;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+    border-right: 0; border-top: 1px solid var(--line);
+  }
+  .marca { display: none; }
+  .menu button { flex-direction: column; gap: 2px; font-size: 0.7rem; padding: 6px 4px; flex: 1; align-items: center; }
+  .conteudo { padding: 20px 16px 96px; }
+  h1 { font-size: 1.45rem; }
+}
+
+/* ---------- peças comuns ---------- */
+.bloco { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; display: grid; gap: 12px; min-width: 0; align-content: start; }
+.bloco > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.vazio { color: var(--muted); margin: 0; font-size: 0.92rem; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface-2); padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primario { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.perigo { color: var(--crit); }
+.btn.perigo.cheio { background: var(--crit); border-color: var(--crit); color: #fff; }
+.btn.mini { padding: 3px 10px; font-size: 0.85rem; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 3px 12px; cursor: pointer; font-size: 0.85rem; color: var(--muted); }
+.chip[aria-pressed="true"] { color: var(--fg); border-color: var(--fg); }
+.ponto { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; background: var(--cor, var(--muted)); }
+.tag { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; white-space: nowrap; }
+.tag.prova { color: var(--crit); border-color: currentColor; }
+.tag.atrasada { color: var(--warn); border-color: currentColor; }
+.tag.invalido { color: var(--crit); border-color: currentColor; }
+
+/* toast */
+.toasts { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 60; }
+.toast { background: var(--surface-2); border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: 8px; padding: 10px 14px; box-shadow: var(--sombra); max-width: min(360px, calc(100vw - 32px)); }
+.toast.erro { border-left-color: var(--crit); }
+@media (max-width: 640px) { .toasts { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast { animation: entra 0.18s ease-out; }
+  @keyframes entra { from { transform: translateY(6px); opacity: 0.4; } }
+}
+
+/* ---------- formulário lateral e modal ---------- */
+.veu { position: fixed; inset: 0; background: rgb(5 8 14 / 0.55); z-index: 40; }
+.painel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 41; width: min(440px, 100vw);
+  background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--sombra);
+  display: flex; flex-direction: column;
+  padding: calc(18px + env(safe-area-inset-top, 0px)) 20px calc(18px + env(safe-area-inset-bottom, 0px));
+  gap: 16px; overflow-y: auto;
+}
+.painel > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.form { display: grid; gap: 16px; }
+.campos { display: grid; gap: 12px; }
+.linha { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.campo { display: grid; gap: 4px; min-width: 0; }
+.campo label { font-size: 0.8rem; color: var(--muted); letter-spacing: 0.02em; }
+.campo input, .campo select, .campo textarea {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+}
+.campo textarea { resize: vertical; }
+.check { display: flex; align-items: center; gap: 8px; }
+.erros:empty { display: none; }
+.erros { color: var(--crit); font-size: 0.9rem; display: grid; gap: 8px; justify-items: start; }
+.erros ul, .erros p { margin: 0; padding-left: 18px; }
+.erros p { padding-left: 0; }
+.acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.acoes .espaco { flex: 1; }
+.modal .veu { z-index: 50; }
+.modal .caixa {
+  position: fixed; z-index: 51; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px)); background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 20px; box-shadow: var(--sombra); display: grid; gap: 16px;
+}
+.modal .caixa p { margin: 0; }
+@media (max-width: 640px) { .painel { width: 100vw; border-left: 0; } }
+
+/* ---------- listas e telas ---------- */
+.lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.item {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
+  border: 0; background: none; padding: 7px 8px; border-radius: 6px; cursor: pointer; min-width: 0;
+}
+.item:hover { background: var(--surface-2); }
+.item-hora { font-size: 0.8rem; color: var(--muted); min-width: 4.6em; flex: none; }
+.item-titulo { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.grade-inicio { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.coluna { display: grid; gap: 16px; min-width: 0; }
+.dias { display: grid; gap: 14px; }
+.dia { display: grid; gap: 4px; }
+.dia-titulo { font-family: var(--f-body); font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); display: flex; gap: 8px; align-items: baseline; padding-left: 8px; }
+.bloco.alerta { border-color: color-mix(in srgb, var(--crit) 55%, var(--line)); }
+.registro-invalido { display: grid; gap: 4px; padding: 6px 8px; }
+
+.faltas { display: grid; gap: 10px; }
+.falta { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
+.falta-nome { font-weight: 600; overflow-wrap: anywhere; }
+.falta-dica, .falta-resto { grid-column: 1 / -1; }
+.barra { grid-column: 1 / -1; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.barra > span { display: block; height: 100%; border-radius: inherit; background: var(--nivel); }
+.verde { --nivel: var(--ok); } .amarelo { --nivel: var(--warn); } .vermelho { --nivel: var(--crit); }
+.falta-resto { color: var(--nivel); font-size: 0.82rem; }
+
+.grade-disciplinas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 16px; align-items: start; }
+.disciplina header h2 { font-size: 1.15rem; }
+.contador { display: flex; align-items: center; gap: 8px; }
+.faltas-num { width: 5em; text-align: center; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 6px; }
+.sub { display: grid; gap: 4px; }
+.sub h3 { font-family: var(--f-body); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.inativas summary { cursor: pointer; color: var(--muted); }
+
+@media (max-width: 900px) { .grade-inicio { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- agenda ---------- */
+.grade-agenda { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: 16px; align-items: start; }
+.cal-cab { display: flex; align-items: center; gap: 8px; }
+.cal-cab h2 { font-size: 1.2rem; min-width: 10ch; text-align: center; }
+.cal-cab .espaco { flex: 1; }
+.semana { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cab-dias span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); padding: 0 6px; }
+.calendario { gap: 8px; }
+.cel {
+  min-height: 84px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px; text-align: left; cursor: pointer; min-width: 0;
+}
+.cel.fora { background: none; border-style: dashed; opacity: 0.35; cursor: default; }
+.cel:hover { border-color: var(--muted); }
+.cel.hoje .cel-num { color: var(--accent); font-weight: 600; }
+.cel.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.cel-num { font-size: 0.85rem; }
+.cel-pontos { display: none; gap: 3px; align-items: center; }
+.cel-titulos { display: grid; gap: 2px; }
+.cel-titulo {
+  font-size: 0.72rem; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-left: 3px solid var(--cor); padding-left: 4px; color: var(--fg);
+}
+@media (max-width: 900px) { .grade-agenda { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .cel { min-height: 52px; padding: 4px; }
+  .cel-titulos { display: none; }
+  .cel-pontos { display: flex; flex-wrap: wrap; }
+  .cel-pontos small { font-size: 0.65rem; color: var(--muted); }
+}
+
+/* ---------- tarefas ---------- */
+.barra-filtros { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
+.campo-inline { display: flex; align-items: center; gap: 8px; }
+.campo-inline label { font-size: 0.85rem; color: var(--muted); }
+.campo-inline select { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+.grade-tarefas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; align-items: start; }
+.tarefa { display: flex; align-items: center; gap: 4px; }
+.tarefa input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); flex: none; margin: 0 2px 0 6px; }
+.tarefa.feita .item-titulo { text-decoration: line-through; color: var(--muted); }
+.tarefa .item-hora { min-width: 0; text-align: right; }
+
+/* ---------- ajustes ---------- */
+.grade-ajustes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+.grade-ajustes > .bloco:last-child { grid-column: 1 / -1; }
+.cores { display: grid; gap: 10px; }
+.cor { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.cor input { width: 40px; height: 30px; border: 1px solid var(--line); border-radius: 6px; background: none; padding: 2px; cursor: pointer; }
+.backup { display: grid; gap: 14px; max-width: 65ch; }
+.backup p { margin: 0; }
+.aviso { color: var(--warn); }
+.campo input[type="file"] { padding: 6px; }
+.tarefa .item { flex-wrap: wrap; row-gap: 2px; }
+.tarefa .item-titulo { flex: 1 1 10em; }
+.disciplina .falta-nome { font-weight: 500; color: var(--muted); font-size: 0.85rem; }
+.login { display: grid; gap: 16px; justify-items: start; padding-top: 18vh; }
+.login h1 { font-size: 2.4rem; }
+.btn.grande { padding: 12px 22px; font-size: 1rem; }
+.erro-login { color: var(--crit); margin: 0; }
+.erro-login:empty { display: none; }
+
+/* ---------- ponto ---------- */
+.ponto-hoje { display: grid; gap: 12px; justify-items: start; }
+.btn-ponto { padding: 12px 20px; font-size: 1rem; }
+.ponto-linhas { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
+.sugestao { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: color-mix(in srgb, var(--warn) 14%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); border-radius: 8px; padding: 8px 10px; }
+.saldo.pos { color: var(--ok); } .saldo.neg { color: var(--crit); }
+.grade-ponto { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.grade-ponto .mes-ponto { grid-column: 1 / -1; }
+.resumo-ponto { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.kpi { display: grid; gap: 2px; }
+.kpi small { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi strong { font-size: 1.5rem; }
+.kpi-semana { grid-column: 1 / -1; }
+.kpi-semana strong { font-size: 1.05rem; }
+.kpi-semana small:last-child { text-transform: none; letter-spacing: 0; }
+.dias-ponto .item { flex-wrap: wrap; row-gap: 2px; }
+.saldo-dia { min-width: 4.5em; text-align: right; }
+@media (max-width: 900px) { .grade-ponto { grid-template-columns: minmax(0, 1fr); } }
+.dias-ponto .item-titulo { white-space: nowrap; flex: 1 0 auto; }
+</style>
+</head>
+<body>
+<div id="app" class="app"><p class="carregando">Carregando…</p></div>
+<script>
+(() => {
+// config.js — configuração pública do app web do Firebase (não é segredo; ver docs do Firebase "API keys").
+// Quem pode usar o hub é definido só nas regras do Firestore (fora deste código público).
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyAOgGA6xhhi1IF7Fgq87JDXUWjhvHtB9ss',
+  authDomain: 'ds-hub-1e2c3.firebaseapp.com',
+  projectId: 'ds-hub-1e2c3',
+  storageBucket: 'ds-hub-1e2c3.firebasestorage.app',
+  messagingSenderId: '1027069662935',
+  appId: '1:1027069662935:web:b482aabab963529bdbc292',
+};
+const FIREBASE_VERSAO = '12.19.0';
+
+// logic.js — funções puras do Ds Hub (sem DOM, sem db).
+const FUSO = 'America/Sao_Paulo';
+
+function partesSP(agora) {
+  const f = new Intl.DateTimeFormat('en-CA', {
+    timeZone: FUSO, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    timeZoneName: 'longOffset',
+  });
+  const p = {};
+  for (const { type, value } of f.formatToParts(agora)) p[type] = value;
+  return p;
+}
+
+function hojeSP(agora) {
+  const p = partesSP(agora);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+function agoraISO(agora) {
+  const p = partesSP(agora);
+  // timeZoneName vem como "GMT-03:00" (ou "GMT" quando o offset é zero)
+  const off = p.timeZoneName === 'GMT' ? '+00:00' : p.timeZoneName.replace('GMT', '');
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}${off}`;
+}
+
+function paraUTC(data) {
+  const [a, m, d] = data.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, d, 12));
+}
+function deUTC(dt) {
+  return dt.toISOString().slice(0, 10);
+}
+
+function somarDias(data, n) {
+  const dt = paraUTC(data);
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return deUTC(dt);
+}
+
+function ehData(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  return deUTC(paraUTC(s)) === s;
+}
+
+function ehHora(s) {
+  return typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+}
+
+function gradeMes(ano, mes) {
+  const primeiro = new Date(Date.UTC(ano, mes - 1, 1, 12));
+  const diasNoMes = new Date(Date.UTC(ano, mes, 0, 12)).getUTCDate();
+  const celulas = Array(primeiro.getUTCDay()).fill(null);
+  for (let d = 1; d <= diasNoMes; d++) {
+    celulas.push(`${ano}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+  while (celulas.length % 7) celulas.push(null);
+  const semanas = [];
+  for (let i = 0; i < celulas.length; i += 7) semanas.push(celulas.slice(i, i + 7));
+  return semanas;
+}
+
+// ---- Faltas (spec §5.1)
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+function faltasInfo(d) {
+  const faltas = num(d?.faltas) ?? 0;
+  const A = num(d?.aulas_totais);
+  const f = num(d?.frequencia_minima_pct);
+  if (A === null || f === null) return { faltas, fMax: null, fRest: null, nivel: null };
+  const fMax = Math.floor((A * (100 - f)) / 100 + 1e-9);
+  const fRest = fMax - faltas;
+  const nivel = fRest <= 0 ? 'vermelho' : fRest > 0.5 * fMax ? 'verde' : 'amarelo';
+  return { faltas, fMax, fRest, nivel };
+}
+
+function ajustarFaltas(atual, delta) {
+  const n = typeof atual === 'string' && atual.trim() !== '' ? Number(atual) : atual;
+  return Math.max(0, (num(n) ?? 0) + delta);
+}
+
+// ---- Seleções do painel e listas
+const noIntervalo = (d, ini, fim) => ehData(d) && d >= ini && d <= fim;
+const chaveHora = (e) => (ehHora(e.hora_inicio) ? '1' + e.hora_inicio : '0');
+const porHora = (a, b) => (chaveHora(a) < chaveHora(b) ? -1 : chaveHora(a) > chaveHora(b) ? 1 : 0);
+
+function eventosDoDia(eventos, data) {
+  return eventos.filter((e) => e && e.data === data && ehData(e.data)).sort(porHora);
+}
+
+function proximosDias(eventos, tarefas, hoje, n) {
+  const fim = somarDias(hoje, n - 1);
+  const dias = new Map();
+  const add = (data, item) => {
+    if (!dias.has(data)) dias.set(data, { ev: [], tf: [] });
+    dias.get(data)[item.kind === 'evento' ? 'ev' : 'tf'].push(item);
+  };
+  for (const e of eventos) {
+    if (!e || !noIntervalo(e.data, hoje, fim)) continue;
+    add(e.data, { kind: 'evento', id: e.id, titulo: e.titulo, area: e.area, tipo: e.tipo, hora: ehHora(e.hora_inicio) ? e.hora_inicio : null, hora_inicio: e.hora_inicio });
+  }
+  for (const t of tarefas) {
+    if (!t || t.status === 'feito' || !noIntervalo(t.prazo, hoje, fim)) continue;
+    add(t.prazo, { kind: 'tarefa', id: t.id, titulo: t.titulo, area: t.area, hora: null });
+  }
+  return [...dias.keys()].sort().map((data) => {
+    const { ev, tf } = dias.get(data);
+    return { data, itens: [...ev.sort(porHora), ...tf].map(({ hora_inicio, ...i }) => i) };
+  });
+}
+
+function provasProximas(eventos, hoje, n = 14) {
+  const fim = somarDias(hoje, n - 1);
+  return eventos
+    .filter((e) => e && e.tipo === 'prova' && noIntervalo(e.data, hoje, fim))
+    .sort((a, b) => (a.data === b.data ? porHora(a, b) : a.data < b.data ? -1 : 1));
+}
+
+function tarefasAtrasadas(tarefas, hoje) {
+  return tarefas
+    .filter((t) => t && t.status !== 'feito' && ehData(t.prazo) && t.prazo < hoje)
+    .sort((a, b) => (a.prazo < b.prazo ? -1 : a.prazo > b.prazo ? 1 : 0));
+}
+
+function filtrarTarefas(tarefas, { mes = null, area = null } = {}) {
+  return tarefas.filter((t) => {
+    if (!t) return false;
+    if (area && t.area !== area) return false;
+    if (mes) return ehData(t.prazo) && t.prazo.slice(0, 7) === mes;
+    return true;
+  });
+}
+
+const STATUS = ['a_fazer', 'fazendo', 'feito'];
+
+function agruparPorStatus(tarefas) {
+  const g = { a_fazer: [], fazendo: [], feito: [], invalidas: [] };
+  for (const t of tarefas) (STATUS.includes(t?.status) ? g[t.status] : g.invalidas).push(t);
+  return g;
+}
+
+// ---- Validação e backup (spec §5, §9)
+const AREAS_PADRAO = [
+  { id: 'faculdade', nome: 'Faculdade', cor: '#5B8CFF' },
+  { id: 'trabalho', nome: 'Trabalho', cor: '#F2A93B' },
+  { id: 'pessoal', nome: 'Pessoal', cor: '#3CC98B' },
+];
+const AREAS = AREAS_PADRAO.map((a) => a.id);
+const TIPOS_EVENTO = ['prova', 'compromisso', 'prazo', 'outro'];
+const COLS_V1 = ['areas', 'disciplinas', 'eventos', 'tarefas'];
+const COLS_BACKUP = [...COLS_V1, 'ponto'];
+
+const vazio = (v) => v === undefined || v === null || v === '';
+const textoOk = (v) => typeof v === 'string' && v.trim() !== '';
+const inteiroMin0 = (v) => Number.isInteger(v) && v >= 0;
+
+function comum(r, erros) {
+  if (!textoOk(r?.titulo)) erros.push('Título é obrigatório.');
+  if (!AREAS.includes(r?.area)) erros.push('Área inválida.');
+  if (!vazio(r?.disciplina_id) && r?.area !== 'faculdade') erros.push('Disciplina só vale para a área Faculdade.');
+}
+
+function validarEvento(e) {
+  const erros = [];
+  comum(e, erros);
+  if (!TIPOS_EVENTO.includes(e?.tipo)) erros.push('Tipo de evento inválido.');
+  if (!ehData(e?.data)) erros.push('Data inválida (use AAAA-MM-DD).');
+  const hi = e?.hora_inicio, hf = e?.hora_fim;
+  if (!vazio(hi) && !ehHora(hi)) erros.push('Hora de início inválida (use HH:MM).');
+  if (!vazio(hf)) {
+    if (!ehHora(hf)) erros.push('Hora de fim inválida (use HH:MM).');
+    else if (vazio(hi)) erros.push('Hora de fim exige hora de início.');
+    else if (ehHora(hi) && hf < hi) erros.push('Hora de fim antes da hora de início.');
+  }
+  return erros;
+}
+
+function validarTarefa(t) {
+  const erros = [];
+  comum(t, erros);
+  if (!STATUS.includes(t?.status)) erros.push('Status inválido.');
+  if (!vazio(t?.prazo) && !ehData(t?.prazo)) erros.push('Prazo inválido (use AAAA-MM-DD).');
+  return erros;
+}
+
+function validarDisciplina(d) {
+  const erros = [];
+  if (!textoOk(d?.nome)) erros.push('Nome é obrigatório.');
+  if (!vazio(d?.aulas_totais) && !inteiroMin0(d?.aulas_totais)) erros.push('Total de aulas deve ser inteiro ≥ 0.');
+  const f = d?.frequencia_minima_pct;
+  if (!vazio(f) && !(typeof f === 'number' && f >= 0 && f <= 100)) erros.push('Frequência mínima deve estar entre 0 e 100.');
+  if (!vazio(d?.faltas) && !inteiroMin0(d?.faltas)) erros.push('Faltas deve ser inteiro ≥ 0.');
+  return erros;
+}
+
+function montarBackup(col, exportadoEm) {
+  const b = { versao: 2, exportado_em: exportadoEm };
+  for (const c of COLS_BACKUP) b[c] = (col[c] || []).map((x) => ({ ...x }));
+  return b;
+}
+
+function validarBackup(obj) {
+  const erros = [];
+  const contagens = { areas: 0, disciplinas: 0, eventos: 0, tarefas: 0, ponto: 0 };
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { ok: false, erros: ['Arquivo não é um backup do Ds Hub.'], contagens };
+  if (obj.versao !== 1 && obj.versao !== 2) erros.push(`Versão de backup não suportada: ${JSON.stringify(obj.versao)}.`);
+  for (const c of obj.versao === 1 ? COLS_V1 : COLS_BACKUP) {
+    if (!Array.isArray(obj[c])) { erros.push(`Faltando a lista "${c}".`); continue; }
+    const naoObjeto = obj[c].filter((x) => !x || typeof x !== 'object' || Array.isArray(x)).length;
+    if (naoObjeto) erros.push(`${naoObjeto} item(ns) inválido(s) em "${c}".`);
+    const objetos = obj[c].filter((x) => x && typeof x === 'object' && !Array.isArray(x));
+    const semId = objetos.filter((x) => typeof x.id !== 'string' || x.id === '').length;
+    if (semId) erros.push(`${semId} item(ns) sem id em "${c}".`);
+    const idRuim = objetos.filter((x) => typeof x.id === 'string' && x.id !== '' && !idValido(x.id)).length;
+    if (idRuim) erros.push(`${idRuim} item(ns) com id inválido em "${c}" (use letras, números e _ - . ~ : @ +).`);
+    const ids = objetos.map((x) => x.id).filter((id) => typeof id === 'string');
+    if (new Set(ids).size !== ids.length) erros.push(`Há ids repetidos em "${c}".`);
+    contagens[c] = obj[c].length;
+  }
+  return { ok: erros.length === 0, erros, contagens };
+}
+
+// Gramática de segmento de caminho do banco do artifact (db.d.ts: PATH GRAMMAR).
+function idValido(id) {
+  return typeof id === 'string' && /^[A-Za-z0-9_\-.~:@+]{1,200}$/.test(id) && id !== '.' && id !== '..' && new TextEncoder().encode(id).length <= 200;
+}
+
+function nomeBackup(hoje) {
+  return `ds-hub-backup-${hoje}.json`;
+}
+
+function diasDesde(data, hoje) {
+  if (!ehData(data) || !ehData(hoje)) return null;
+  return Math.round((paraUTC(hoje) - paraUTC(data)) / 86400000);
+}
+
+// ---- Ponto (adendo §3)
+const JORNADA_MIN = 360;
+const TIPOS_DIA = ['normal', 'prova', 'feriado', 'ferias'];
+const MAX_DIAS_PERIODO = 60;
+
+function horaSP(agora) {
+  const p = partesSP(agora);
+  return `${p.hour}:${p.minute}`;
+}
+
+function minutos(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function trabalhadoMin(p) {
+  if (!p || !ehHora(p.entrada) || !ehHora(p.saida)) return null;
+  const t = minutos(p.saida) - minutos(p.entrada);
+  return t > 0 ? t : null;
+}
+
+function saldoDia(p) {
+  const T = trabalhadoMin(p);
+  const tipo = TIPOS_DIA.includes(p?.tipo) ? p.tipo : 'normal';
+  if (tipo === 'feriado' || tipo === 'ferias') {
+    if (T !== null) return T;
+    return vazio(p?.entrada) ? 0 : null;
+  }
+  if (T === null) return null;
+  return tipo === 'prova' ? Math.max(0, T - JORNADA_MIN) : T - JORNADA_MIN;
+}
+
+const hm = (min) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+function formatarDuracao(min) {
+  return hm(Math.max(0, Math.round(min)));
+}
+function formatarSaldo(min) {
+  if (min === 0) return '0:00';
+  return (min > 0 ? '+' : '−') + hm(Math.abs(min));
+}
+
+function inicioSemana(data) {
+  return somarDias(data, -paraUTC(data).getUTCDay());
+}
+
+function resumoPonto(pontos, hoje, mes) {
+  const validos = pontos.filter((p) => p && ehData(p.data));
+  let saldoMes = 0, saldoTotal = 0, semanaMin = 0;
+  const ini = inicioSemana(hoje);
+  const diasMes = [];
+  for (const p of validos) {
+    const S = saldoDia(p);
+    const T = trabalhadoMin(p);
+    if (S !== null) {
+      saldoTotal += S;
+      if (p.data.slice(0, 7) === mes) saldoMes += S;
+    }
+    if (T !== null && p.data >= ini && p.data <= hoje) semanaMin += T;
+    if (p.data.slice(0, 7) === mes) diasMes.push({ ...p, T, S });
+  }
+  diasMes.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));
+  return { saldoMes, saldoTotal, semanaMin, diasMes };
+}
+
+function validarPonto(p) {
+  const erros = [];
+  if (!ehData(p?.data)) erros.push('Data inválida (use AAAA-MM-DD).');
+  if (!vazio(p?.tipo) && !TIPOS_DIA.includes(p.tipo)) erros.push('Tipo de dia inválido.');
+  if (!vazio(p?.entrada) && !ehHora(p.entrada)) erros.push('Entrada inválida (use HH:MM).');
+  if (!vazio(p?.saida)) {
+    if (!ehHora(p.saida)) erros.push('Saída inválida (use HH:MM).');
+    else if (vazio(p?.entrada)) erros.push('Saída exige entrada.');
+    else if (ehHora(p.entrada) && p.saida <= p.entrada) erros.push('A saída precisa ser depois da entrada.');
+  }
+  return erros;
+}
+
+function diasIntervalo(ini, fim) {
+  if (!ehData(ini) || !ehData(fim)) throw new Error('Datas inválidas.');
+  if (fim < ini) throw new Error('A data final é antes da inicial.');
+  const dias = [];
+  for (let d = ini; d <= fim; d = somarDias(d, 1)) {
+    dias.push(d);
+    if (dias.length > MAX_DIAS_PERIODO) throw new Error(`Marque no máximo ${MAX_DIAS_PERIODO} dias por vez.`);
+  }
+  return dias;
+}
+
+function estadoBotaoPonto(p) {
+  if (!p || !ehHora(p.entrada)) return 'entrada';
+  if (!ehHora(p.saida)) return 'saida';
+  return 'completo';
+}
+
+// store.js — acesso ao db do artifact (data/hub/{colecao}/{id}).
+
+const COLECOES = ['areas', 'disciplinas', 'eventos', 'tarefas', 'ponto'];
+
+function traduzirErro(e) {
+  switch (e && e.code) {
+    case 'quota_exceeded': return 'O espaço do hub acabou. Exporte um backup e apague itens antigos.';
+    case 'not_granted':
+    case 'revoked': return 'Sem permissão para acessar os dados do hub.';
+    case 'invalid_argument': return 'Os dados não foram aceitos (formato inválido ou sem permissão).';
+    default: return 'Não consegui falar com o banco de dados. Tente de novo.';
+  }
+}
+
+function criarStore(db, relogio = () => new Date()) {
+  const col = (c) => db.collection(`data/hub/${c}`);
+  const doc = (c, id) => db.doc(`data/hub/${c}/${id}`);
+  const lista = (snap) => snap.docs.filter((d) => d.exists).map((d) => ({ ...d.data(), id: d.id }));
+  const semId = ({ id, ...resto }) => resto;
+  const agora = () => agoraISO(relogio());
+
+  async function criar(c, dados) {
+    const id = crypto.randomUUID();
+    const corpo = semId(dados);
+    if (c !== 'areas') { const t = agora(); corpo.criado_em = t; corpo.atualizado_em = t; }
+    await doc(c, id).set(corpo);
+    return id;
+  }
+
+  async function atualizar(c, id, patch) {
+    const corpo = semId(patch);
+    if (c !== 'areas') corpo.atualizado_em = agora();
+    await doc(c, id).update(corpo);
+  }
+
+  const excluir = (c, id) => doc(c, id).delete();
+
+  async function garantirAreas() {
+    const existentes = new Set(lista(await col('areas').get()).map((a) => a.id));
+    for (const a of AREAS_PADRAO) if (!existentes.has(a.id)) await doc('areas', a.id).set(semId(a));
+  }
+
+  async function itensDaDisciplina(id) {
+    const ids = async (c) => lista(await col(c).where('disciplina_id', '==', id).get()).map((x) => x.id);
+    return { eventos: await ids('eventos'), tarefas: await ids('tarefas') };
+  }
+
+  async function excluirDisciplina(id, modo) {
+    const itens = await itensDaDisciplina(id);
+    for (const c of ['eventos', 'tarefas']) {
+      for (const itemId of itens[c]) {
+        if (modo === 'desvincular') await atualizar(c, itemId, { disciplina_id: null });
+        else await excluir(c, itemId);
+      }
+    }
+    await excluir('disciplinas', id);
+  }
+
+  async function lerTudo() {
+    const r = {};
+    for (const c of COLECOES) r[c] = lista(await col(c).get());
+    return r;
+  }
+
+  async function importar(backup, modo) {
+    const v = validarBackup(backup);
+    if (!v.ok) throw new Error(v.erros.join(' '));
+    let gravados = 0;
+    // Só as coleções presentes no backup (um backup v1 não tem "ponto" e não mexe nele).
+    const cols = COLECOES.filter((c) => Array.isArray(backup[c]));
+    // 1º grava tudo; só depois apaga (substituir). Uma falha no meio deixa dados a mais, nunca a menos.
+    for (const c of cols) {
+      for (const item of backup[c]) { await doc(c, item.id).set(semId(item)); gravados++; }
+    }
+    if (modo === 'substituir') {
+      for (const c of cols) {
+        const manter = new Set(backup[c].map((x) => x.id));
+        for (const x of lista(await col(c).get())) if (!manter.has(x.id)) await excluir(c, x.id);
+      }
+    }
+    return { gravados };
+  }
+
+  // ---- Ponto: um documento por dia, id = data
+  const dia = (data) => doc('ponto', data);
+  async function lerDia(data) {
+    const snap = await dia(data).get();
+    return snap.exists ? snap.data() : null;
+  }
+  async function gravarDia(data, atual, campos) {
+    const t = agora();
+    if (atual) await dia(data).update({ ...campos, atualizado_em: t });
+    else await dia(data).set({ data, tipo: 'normal', editado: false, notas: null, ...campos, criado_em: t, atualizado_em: t });
+  }
+
+  // `esperado` = a ação que o botão mostrava. Se o estado mudou (outra aba, clique duplo), recusa sem gravar.
+  async function baterPonto(data, hora, esperado) {
+    const atual = await lerDia(data);
+    const acao = !atual || !ehHora(atual.entrada) ? 'entrada' : !ehHora(atual.saida) ? 'saida' : 'completo';
+    if (esperado && acao !== esperado) throw new Error('O ponto mudou em outra aba ou num clique anterior. A tela foi atualizada; confira e bata de novo.');
+    if (!atual || !ehHora(atual.entrada)) { await gravarDia(data, atual, { entrada: hora }); return 'entrada'; }
+    if (!ehHora(atual.saida)) {
+      if (hora <= atual.entrada) throw new Error('A saída precisa ser depois da entrada.');
+      await gravarDia(data, atual, { saida: hora });
+      return 'saida';
+    }
+    return 'nada';
+  }
+
+  async function salvarDia(data, campos, { editado }) {
+    const atual = await lerDia(data);
+    await gravarDia(data, atual, { ...semId(campos), editado: Boolean(editado || atual?.editado) });
+  }
+
+  async function marcarPeriodo(ini, fim, tipo) {
+    const dias = diasIntervalo(ini, fim);
+    for (const d of dias) await gravarDia(d, await lerDia(d), { tipo });
+    return dias.length;
+  }
+
+  function assinar(c, aoMudar, aoErro) {
+    return col(c).onSnapshot((snap) => aoMudar(lista(snap)), (e) => aoErro(traduzirErro(e)));
+  }
+
+  return { assinar, criar, atualizar, excluir, garantirAreas, itensDaDisciplina, excluirDisciplina, lerTudo, importar, baterPonto, salvarDia, marcarPeriodo };
+}
+
+// firebase-db.js — dá ao Cloud Firestore (SDK modular, injetado em `fs`) a interface `db` usada por store.js.
+const MAPA_ERROS = {
+  'permission-denied': 'not_granted',
+  unauthenticated: 'not_granted',
+  'resource-exhausted': 'quota_exceeded',
+  'invalid-argument': 'invalid_argument',
+  'not-found': 'invalid_argument',
+};
+
+function erroDoFirestore(e) {
+  const code = MAPA_ERROS[e && e.code] || 'unavailable';
+  return { code, message: (e && e.message) || code };
+}
+
+function criarFirebaseDb(fs) {
+  const embrulhar = (p) => p.catch((e) => { throw erroDoFirestore(e); });
+  const docSnap = (s) => ({ id: s.id, exists: s.exists(), data: () => s.data() });
+  const querySnap = (s) => {
+    const docs = s.docs.map(docSnap);
+    return { docs, size: docs.length, empty: docs.length === 0 };
+  };
+
+  function consulta(path, restricoes = []) {
+    const alvo = () => (restricoes.length ? fs.query(fs.collection(fs.db, path), ...restricoes) : fs.collection(fs.db, path));
+    return {
+      path,
+      where: (f, op, v) => consulta(path, [...restricoes, fs.where(f, op, v)]),
+      orderBy: (f, dir = 'asc') => consulta(path, [...restricoes, fs.orderBy(f, dir)]),
+      limit: (n) => consulta(path, [...restricoes, fs.limit(n)]),
+      get: () => embrulhar(fs.getDocs(alvo())).then(querySnap),
+      onSnapshot: (next, onErr) => fs.onSnapshot(alvo(), (s) => next(querySnap(s)), (e) => onErr && onErr(erroDoFirestore(e))),
+      doc: (id) => documento(`${path}/${id}`),
+    };
+  }
+
+  function documento(path) {
+    const ref = () => fs.doc(fs.db, path);
+    return {
+      id: path.split('/').at(-1),
+      path,
+      get: () => embrulhar(fs.getDoc(ref())).then(docSnap),
+      set: (d) => embrulhar(fs.setDoc(ref(), d)),
+      update: (d) => embrulhar(fs.updateDoc(ref(), d)),
+      delete: () => embrulhar(fs.deleteDoc(ref())),
+      onSnapshot: (next, onErr) => fs.onSnapshot(ref(), (s) => next(docSnap(s)), (e) => onErr && onErr(erroDoFirestore(e))),
+      collection: (sub) => consulta(`${path}/${sub}`),
+    };
+  }
+
+  return { collection: (p) => consulta(p), doc: (p) => documento(p) };
+}
+
+// auth.js — mensagens de erro do login. Quem pode ler/gravar é decidido só pelas regras do Firestore.
+
+function mensagemErroLogin(e) {
+  switch (e && e.code) {
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return null; // a pessoa fechou a janela: não é erro
+    case 'auth/popup-blocked':
+      return 'O navegador bloqueou a janela de login. Permita pop-ups para este site e tente de novo.';
+    case 'auth/unauthorized-domain':
+      return 'Este endereço não está autorizado no Firebase (Authentication → Settings → Authorized domains).';
+    case 'auth/network-request-failed':
+      return 'Sem conexão com o Google. Verifique a internet e tente de novo.';
+    default:
+      return `Não consegui entrar (${(e && e.code) || 'erro desconhecido'}).`;
+  }
+}
+
+// ui.js — interface do Ds Hub. Usa as funções de logic.js e store.js (mesmo escopo no bundle).
+
+// ---------- utilitários de DOM ----------
+function h(tag, props, ...filhos) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if (k === 'value') el.value = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const f of filhos.flat(Infinity)) if (f !== null && f !== undefined && f !== false) el.append(f.nodeType ? f : String(f));
+  return el;
+}
+const $ = (s, el = document) => el.querySelector(s);
+
+const ICONES = {
+  inicio: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
+  agenda: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  tarefas: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2',
+  faculdade: 'M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5',
+  ponto: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+  ajustes: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12h2M3 12h2M12 3v2M12 19v2M17 7l1.5-1.5M5.5 18.5L7 17M17 17l1.5 1.5M5.5 5.5L7 7',
+};
+const icone = (n) => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p.setAttribute('d', ICONES[n]);
+  p.setAttribute('stroke-linecap', 'round');
+  p.setAttribute('stroke-linejoin', 'round');
+  svg.append(p);
+  return svg;
+};
+
+const ROTAS = [
+  ['inicio', 'Início'], ['agenda', 'Agenda'], ['tarefas', 'Tarefas'], ['ponto', 'Ponto'], ['faculdade', 'Faculdade'], ['ajustes', 'Ajustes'],
+];
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const diaSemana = (data) => DIAS_CURTOS[new Date(data + 'T12:00:00Z').getUTCDay()];
+const dataCurta = (data) => `${diaSemana(data)}, ${data.slice(8, 10)}/${data.slice(5, 7)}`;
+const hoje = () => hojeSP(new Date());
+
+// ---------- estado ----------
+const estado = {
+  rota: 'inicio',
+  store: null,
+  usuario: null,
+  fb: null,
+  assinaturas: [],
+  dados: { areas: [], disciplinas: [], eventos: [], tarefas: [], ponto: [] },
+  pronto: new Set(),
+  mesVisivel: null,
+  diaSelecionado: null,
+  filtroAgenda: null,
+  filtroTarefas: { mes: null, area: null },
+  mostrarInativas: false,
+  tema: 'escuro',
+  ultimoBackup: null,
+  renderPendente: false,
+  ponteiroBaixo: false,
+};
+
+// ---------- armazenamento local (só conveniências) ----------
+function lerLocal(chave) { try { return localStorage.getItem(chave); } catch { return null; } }
+function gravarLocal(chave, valor) { try { localStorage.setItem(chave, valor); } catch { /* sem armazenamento local */ } }
+
+function aplicarTema() {
+  if (estado.tema === 'claro') document.documentElement.setAttribute('data-tema', 'claro');
+  else document.documentElement.removeAttribute('data-tema');
+}
+
+// ---------- avisos ----------
+function avisar(msg, tipo = 'ok') {
+  let box = $('.toasts');
+  if (!box) { box = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' }); document.body.append(box); }
+  const t = h('div', { class: 'toast' + (tipo === 'erro' ? ' erro' : '') }, msg);
+  box.append(t);
+  setTimeout(() => t.remove(), tipo === 'erro' ? 7000 : 3000);
+}
+
+// ---------- telas de estado ----------
+function telaEstado(titulo, texto) {
+  const app = $('#app');
+  app.replaceChildren(h('div', { class: 'estado-tela' }, h('h1', null, titulo), h('p', null, texto)));
+}
+
+// ---------- casca ----------
+function irPara(rota) {
+  estado.rota = rota;
+  try { history.replaceState(null, '', '#' + rota); } catch { /* frame pode bloquear */ }
+  render();
+}
+
+function montarCasca() {
+  const nav = h('nav', { class: 'menu', 'aria-label': 'Seções' },
+    h('div', { class: 'marca' }, h('strong', null, 'Ds Hub'), h('time', { id: 'hoje-label' })),
+    ROTAS.map(([id, nome]) => h('button', { type: 'button', 'data-rota': id, onclick: () => irPara(id) }, icone(id), h('span', null, nome))),
+  );
+  $('#app').replaceChildren(h('div', { class: 'casca' }, nav, h('main', { class: 'conteudo', id: 'conteudo' })));
+}
+
+function aplicarCoresDasAreas() {
+  for (const a of estado.dados.areas) {
+    if (/^#[0-9a-fA-F]{6}$/.test(a.cor || '')) document.documentElement.style.setProperty(`--area-${a.id}`, a.cor);
+  }
+}
+
+const TELAS = {};
+// Não redesenhar enquanto o usuário digita num campo da tela ou está no meio de um clique:
+// o redesenho apagaria o que foi digitado ou engoliria o clique. Fica pendente e roda depois.
+const EDITAVEL = 'input:not([type=checkbox]):not([type=file]):not([type=color]), select, textarea';
+function precisaAdiar() {
+  const a = document.activeElement;
+  const editando = a && a !== document.body && $('#conteudo')?.contains(a) && a.matches(EDITAVEL);
+  return Boolean(editando || estado.ponteiroBaixo);
+}
+function talvezRender() {
+  if (estado.renderPendente && !precisaAdiar() && !$('.painel-form')) { estado.renderPendente = false; render(); }
+}
+document.addEventListener('pointerdown', () => { estado.ponteiroBaixo = true; }, true);
+for (const ev of ['pointerup', 'pointercancel']) {
+  document.addEventListener(ev, () => { estado.ponteiroBaixo = false; setTimeout(talvezRender, 0); }, true);
+}
+document.addEventListener('focusout', () => setTimeout(talvezRender, 0), true);
+
+function render() {
+  const main = $('#conteudo');
+  if (!main) return;
+  if (precisaAdiar()) { estado.renderPendente = true; return; }
+  estado.renderPendente = false;
+  const h0 = hoje();
+  $('#hoje-label').textContent = dataCurta(h0);
+  for (const b of document.querySelectorAll('.menu button')) {
+    if (b.dataset.rota === estado.rota) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  }
+  aplicarCoresDasAreas();
+  const rolagem = window.scrollY;
+  main.replaceChildren();
+  (TELAS[estado.rota] || TELAS.inicio)(main, h0);
+  window.scrollTo(0, rolagem);
+}
+
+function topo(titulo, subtitulo, ...acoes) {
+  return h('div', { class: 'topo' },
+    h('div', null, h('h1', null, titulo), subtitulo ? h('p', null, subtitulo) : null),
+    acoes.length ? h('div', { class: 'chips' }, acoes) : null);
+}
+
+
+// ---------- peças de lista ----------
+const corArea = (area) => `--cor: var(--area-${AREAS.includes(area) ? area : 'x'}, var(--muted))`;
+const buscar = (c, id) => estado.dados[c].find((x) => x.id === id);
+
+function itemLinha(item, opcoes = {}) {
+  const registro = buscar(item.kind === 'evento' ? 'eventos' : 'tarefas', item.id) || item;
+  const hora = item.kind === 'evento' ? (item.hora || 'dia todo') : 'tarefa';
+  return h('li', null, h('button', { type: 'button', class: 'item', onclick: () => abrirFormulario(item.kind, registro) },
+    h('span', { class: 'ponto', style: corArea(item.area) }),
+    h('span', { class: 'item-hora mono' }, opcoes.data ? dataCurta(opcoes.data) : hora),
+    h('span', { class: 'item-titulo' }, item.titulo || '(sem título)'),
+    item.tipo === 'prova' ? h('span', { class: 'tag prova' }, 'prova') : null,
+    opcoes.atrasada ? h('span', { class: 'tag atrasada' }, 'atrasada') : null));
+}
+
+function bloco(titulo, conteudo, extra) {
+  return h('section', { class: 'bloco' + (extra ? ' ' + extra : '') }, h('header', null, h('h2', null, titulo)), conteudo);
+}
+const carregando = (c) => !estado.pronto.has(c);
+const textoVazio = (texto) => h('p', { class: 'vazio' }, texto);
+
+// ---------- faltas ----------
+function medidorFaltas(d, compacto) {
+  const info = faltasInfo(d);
+  const marca = compacto ? d.id : null;
+  const nome = h('span', { class: 'falta-nome' }, compacto ? (d.sigla || d.nome) : 'Faltas');
+  if (info.nivel === null) {
+    return h('div', { class: 'falta', 'data-disc': marca }, nome,
+      h('span', { class: 'mono' }, `${info.faltas} falta${info.faltas === 1 ? '' : 's'}`),
+      compacto ? null : h('small', { class: 'muted falta-dica' }, 'Informe total de aulas e frequência mínima para ver o limite.'));
+  }
+  const pct = info.fMax > 0 ? Math.min(100, (info.faltas / info.fMax) * 100) : 100;
+  const resto = info.fRest > 0 ? `restam ${info.fRest}` : info.fRest === 0 ? 'no limite' : `${-info.fRest} acima do limite`;
+  return h('div', { class: 'falta', 'data-disc': marca }, nome,
+    h('span', { class: 'mono' }, `${info.faltas} / ${info.fMax}`),
+    h('div', { class: `barra ${info.nivel}`, role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': info.fMax, 'aria-valuenow': info.faltas, 'aria-label': `Faltas em ${d.nome}` },
+      h('span', { style: `width:${pct}%` })),
+    h('small', { class: `falta-resto ${info.nivel}` }, resto));
+}
+
+async function mudarFaltas(d, novo) {
+  const valor = ajustarFaltas(novo, 0);
+  d.faltas = valor; // otimista: cliques seguidos partem do último valor
+  render();
+  try { await estado.store.atualizar('disciplinas', d.id, { faltas: valor }); } catch (e) { avisar(traduzirErro(e), 'erro'); }
+}
+
+// ---------- dados com problema ----------
+function registrosInvalidos() {
+  const r = [];
+  for (const [c, tipo, validar] of [['eventos', 'evento', validarEvento], ['tarefas', 'tarefa', validarTarefa], ['disciplinas', 'disciplina', validarDisciplina]]) {
+    for (const x of estado.dados[c]) { const erros = validar(x); if (erros.length) r.push({ tipo, x, erros }); }
+  }
+  return r;
+}
+
+// ---------- Início ----------
+TELAS.inicio = (main, h0) => {
+  const { eventos, tarefas } = estado.dados;
+  main.append(topo('Início', `Hoje é ${dataCurta(h0)}`,
+    h('button', { type: 'button', class: 'btn', onclick: () => abrirFormulario('evento') }, '+ Evento'),
+    h('button', { type: 'button', class: 'btn', onclick: () => abrirFormulario('tarefa') }, '+ Tarefa')));
+
+  const dias = proximosDias(eventos, tarefas, h0, 7);
+  const prox = carregando('eventos') || carregando('tarefas') ? textoVazio('Carregando…')
+    : dias.length ? h('div', { class: 'dias' }, dias.map((d) => h('div', { class: 'dia' },
+      h('h3', { class: 'dia-titulo' }, d.data === h0 ? 'Hoje' : d.data === somarDias(h0, 1) ? 'Amanhã' : dataCurta(d.data),
+        h('time', { class: 'mono muted', datetime: d.data }, d.data === h0 || d.data === somarDias(h0, 1) ? dataCurta(d.data) : '')),
+      h('ul', { class: 'lista' }, d.itens.map((i) => itemLinha(i))))))
+      : textoVazio('Nada nos próximos 7 dias. Use "+ Evento" ou "+ Tarefa" para adicionar.');
+
+  const provas = provasProximas(eventos, h0, 14);
+  const atrasadas = tarefasAtrasadas(tarefas, h0);
+  const discs = disciplinasAtivas();
+  const invalidos = registrosInvalidos();
+
+  main.append(h('div', { class: 'grade-inicio' },
+    bloco('Próximos 7 dias', prox, 'principal'),
+    h('div', { class: 'coluna' },
+      carregando('ponto') ? null : cardPonto(h0),
+      bloco('Provas (14 dias)', provas.length
+        ? h('ul', { class: 'lista' }, provas.map((e) => itemLinha({ kind: 'evento', ...e, hora: e.hora_inicio }, { data: e.data })))
+        : textoVazio('Nenhuma prova nas próximas duas semanas.')),
+      bloco('Atrasadas', atrasadas.length
+        ? h('ul', { class: 'lista' }, atrasadas.map((t) => itemLinha({ kind: 'tarefa', ...t }, { data: t.prazo, atrasada: true })))
+        : textoVazio('Nenhuma tarefa atrasada.')),
+      bloco('Faltas', discs.length
+        ? h('div', { class: 'faltas' }, discs.map((d) => medidorFaltas(d, true)))
+        : textoVazio('Cadastre suas disciplinas na aba Faculdade.')),
+      invalidos.length ? bloco('Dados com problema', h('ul', { class: 'lista' }, invalidos.map(({ tipo, x, erros }) =>
+        h('li', { class: 'registro-invalido' },
+          h('div', null, h('span', { class: 'tag invalido' }, 'inválido'), ' ', h('strong', null, x.titulo || x.nome || x.id)),
+          h('small', { class: 'muted' }, erros.join(' ')),
+          h('div', { class: 'acoes' },
+            h('button', { type: 'button', class: 'btn mini', onclick: () => abrirFormulario(tipo, x) }, 'Editar'),
+            h('button', { type: 'button', class: 'btn mini perigo', onclick: () => excluirRegistro(tipo, x) }, 'Excluir'))))), 'alerta') : null)));
+};
+
+// ---------- Faculdade ----------
+function cartaoDisciplina(d, h0) {
+  const provas = estado.dados.eventos.filter((e) => e.disciplina_id === d.id && e.tipo === 'prova' && ehData(e.data) && e.data >= h0)
+    .sort((a, b) => (a.data < b.data ? -1 : 1));
+  const abertas = estado.dados.tarefas.filter((t) => t.disciplina_id === d.id && t.status !== 'feito');
+  const entradaFaltas = h('input', { type: 'number', min: 0, step: 1, inputmode: 'numeric', class: 'faltas-num mono', value: d.faltas ?? 0, 'aria-label': `Faltas em ${d.nome}`,
+    onchange: (e) => mudarFaltas(d, Number.parseInt(e.target.value, 10) || 0) });
+  return h('article', { class: 'bloco disciplina', 'data-disc': d.id },
+    h('header', null,
+      h('div', null, h('h2', null, d.nome), h('small', { class: 'muted mono' }, [d.sigla, d.semestre].filter(Boolean).join(' · '))),
+      h('button', { type: 'button', class: 'btn mini', onclick: () => abrirFormulario('disciplina', d) }, 'Editar')),
+    medidorFaltas(d),
+    h('div', { class: 'contador' },
+      h('button', { type: 'button', class: 'btn', 'aria-label': 'Remover falta', onclick: () => mudarFaltas(d, ajustarFaltas(d.faltas, -1)) }, '−1'),
+      entradaFaltas,
+      h('button', { type: 'button', class: 'btn', 'aria-label': 'Adicionar falta', onclick: () => mudarFaltas(d, ajustarFaltas(d.faltas, 1)) }, '+1')),
+    h('div', { class: 'sub' }, h('h3', null, 'Próximas provas'), provas.length
+      ? h('ul', { class: 'lista' }, provas.map((e) => itemLinha({ kind: 'evento', ...e, hora: e.hora_inicio }, { data: e.data })))
+      : textoVazio('Nenhuma prova marcada.')),
+    h('div', { class: 'sub' }, h('h3', null, 'Tarefas abertas'), abertas.length
+      ? h('ul', { class: 'lista' }, abertas.map((t) => itemLinha({ kind: 'tarefa', ...t }, { data: ehData(t.prazo) ? t.prazo : null, atrasada: ehData(t.prazo) && t.prazo < h0 })))
+      : textoVazio('Nenhuma tarefa aberta.')));
+}
+
+TELAS.faculdade = (main, h0) => {
+  main.append(topo('Faculdade', 'Disciplinas, provas e faltas',
+    h('button', { type: 'button', class: 'btn primario', onclick: () => abrirFormulario('disciplina', null, { ativa: true, faltas: 0 }) }, '+ Nova disciplina')));
+  const ativas = disciplinasAtivas();
+  const inativas = estado.dados.disciplinas.filter((d) => d.ativa === false);
+  if (carregando('disciplinas')) { main.append(textoVazio('Carregando…')); return; }
+  main.append(ativas.length ? h('div', { class: 'grade-disciplinas' }, ativas.map((d) => cartaoDisciplina(d, h0)))
+    : bloco('Nenhuma disciplina ativa', textoVazio('Use "+ Nova disciplina" e informe total de aulas e frequência mínima para acompanhar as faltas.')));
+  if (inativas.length) {
+    main.append(h('details', { class: 'inativas', open: estado.mostrarInativas, ontoggle: (e) => { estado.mostrarInativas = e.target.open; } },
+      h('summary', null, `Inativas (${inativas.length})`),
+      h('ul', { class: 'lista' }, inativas.map((d) => h('li', null, h('button', { type: 'button', class: 'item', onclick: () => abrirFormulario('disciplina', d) },
+        h('span', { class: 'item-titulo' }, d.nome), h('span', { class: 'muted mono' }, d.semestre || '')))))));
+  }
+};
+
+// ---------- filtros de área ----------
+function chipsArea(atual, aoEscolher) {
+  const opcoes = [[null, 'Todas'], ...AREAS_PADRAO.map((a) => [a.id, nomeArea(a.id)])];
+  return h('div', { class: 'chips filtros', role: 'group', 'aria-label': 'Filtrar por área' }, opcoes.map(([id, nome]) =>
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(atual === id), onclick: () => aoEscolher(id) },
+      id ? h('span', { class: 'ponto', style: corArea(id) }) : null, ' ', nome)));
+}
+const daArea = (area) => (x) => !area || x.area === area;
+const nomeMes = (am) => `${MESES[Number(am.slice(5, 7)) - 1]} de ${am.slice(0, 4)}`;
+function mudarMes(am, delta) {
+  const [a, m] = am.split('-').map(Number);
+  const t = a * 12 + (m - 1) + delta;
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+}
+
+// ---------- Agenda ----------
+function itensDoDia(data, area) {
+  const ev = eventosDoDia(estado.dados.eventos, data).filter(daArea(area))
+    .map((e) => ({ kind: 'evento', id: e.id, titulo: e.titulo, area: e.area, tipo: e.tipo, hora: ehHora(e.hora_inicio) ? e.hora_inicio : null }));
+  const tf = estado.dados.tarefas.filter((t) => t.prazo === data && t.status !== 'feito').filter(daArea(area))
+    .map((t) => ({ kind: 'tarefa', id: t.id, titulo: t.titulo, area: t.area, hora: null }));
+  return [...ev, ...tf];
+}
+
+TELAS.agenda = (main, h0) => {
+  const am = estado.mesVisivel || h0.slice(0, 7);
+  if (!estado.diaSelecionado || estado.diaSelecionado.slice(0, 7) !== am) estado.diaSelecionado = h0.slice(0, 7) === am ? h0 : `${am}-01`;
+  const area = estado.filtroAgenda;
+  main.append(topo('Agenda', null, h('button', { type: 'button', class: 'btn primario', onclick: () => abrirFormulario('evento') }, '+ Novo evento')));
+  main.append(chipsArea(area, (id) => { estado.filtroAgenda = id; render(); }));
+
+  const [ano, mes] = am.split('-').map(Number);
+  const cab = h('div', { class: 'cal-cab' },
+    h('button', { type: 'button', class: 'btn mini', 'aria-label': 'Mês anterior', onclick: () => { estado.mesVisivel = mudarMes(am, -1); render(); } }, '‹'),
+    h('h2', null, nomeMes(am)),
+    h('button', { type: 'button', class: 'btn mini', 'aria-label': 'Próximo mês', onclick: () => { estado.mesVisivel = mudarMes(am, 1); render(); } }, '›'),
+    h('span', { class: 'espaco' }),
+    h('button', { type: 'button', class: 'btn mini', onclick: () => { estado.mesVisivel = h0.slice(0, 7); estado.diaSelecionado = h0; render(); } }, 'Hoje'));
+  const semanas = gradeMes(ano, mes).map((sem) => h('div', { class: 'semana' }, sem.map((dia) => {
+    if (!dia) return h('div', { class: 'cel fora' });
+    const itens = itensDoDia(dia, area);
+    const classes = ['cel', dia === h0 ? 'hoje' : '', dia === estado.diaSelecionado ? 'sel' : ''].join(' ');
+    return h('button', { type: 'button', class: classes, 'data-dia': dia, 'aria-label': `${dataCurta(dia)}, ${itens.length} item(ns)`,
+      onclick: () => { estado.diaSelecionado = dia; render(); } },
+      h('span', { class: 'cel-num mono' }, Number(dia.slice(8))),
+      h('span', { class: 'cel-pontos' }, itens.slice(0, 3).map((i) => h('span', { class: 'ponto', style: corArea(i.area) })),
+        itens.length > 3 ? h('small', { class: 'mono' }, `+${itens.length - 3}`) : null),
+      h('span', { class: 'cel-titulos' }, itens.slice(0, 2).map((i) => h('span', { class: 'cel-titulo', style: corArea(i.area) }, i.titulo))));
+  })));
+  const cal = h('section', { class: 'bloco calendario' }, cab,
+    h('div', { class: 'semana cab-dias' }, DIAS_CURTOS.map((d) => h('span', null, d))), semanas);
+
+  const sel = estado.diaSelecionado;
+  const doDia = itensDoDia(sel, area);
+  const detalhe = h('section', { class: 'bloco dia-detalhe' },
+    h('header', null, h('h2', null, sel === h0 ? `Hoje · ${dataCurta(sel)}` : dataCurta(sel))),
+    doDia.length ? h('ul', { class: 'lista' }, doDia.map((i) => itemLinha(i))) : textoVazio('Nada neste dia.'),
+    h('div', null, h('button', { type: 'button', class: 'btn', onclick: () => abrirFormulario('evento', null, { data: sel }) }, 'Novo evento neste dia')));
+  main.append(h('div', { class: 'grade-agenda' }, cal, detalhe));
+};
+
+// ---------- Tarefas ----------
+async function alternarConclusao(t, feito) {
+  const patch = feito ? { status: 'feito', concluida_em: agoraISO(new Date()) } : { status: 'a_fazer', concluida_em: null };
+  Object.assign(t, patch);
+  render();
+  try { await estado.store.atualizar('tarefas', t.id, patch); } catch (e) { avisar(traduzirErro(e), 'erro'); }
+}
+
+function linhaTarefa(t, h0) {
+  const atrasada = t.status !== 'feito' && ehData(t.prazo) && t.prazo < h0;
+  const disc = t.disciplina_id ? buscar('disciplinas', t.disciplina_id) : null;
+  return h('li', { class: 'tarefa' + (t.status === 'feito' ? ' feita' : '') },
+    h('input', { type: 'checkbox', checked: t.status === 'feito', 'aria-label': `Concluir ${t.titulo}`, onchange: (e) => alternarConclusao(t, e.target.checked) }),
+    h('button', { type: 'button', class: 'item', onclick: () => abrirFormulario('tarefa', t) },
+      h('span', { class: 'ponto', style: corArea(t.area) }),
+      h('span', { class: 'item-titulo' }, t.titulo || '(sem título)'),
+      disc ? h('span', { class: 'tag' }, disc.sigla || disc.nome) : null,
+      atrasada ? h('span', { class: 'tag atrasada' }, 'atrasada') : null,
+      h('span', { class: 'item-hora mono' }, ehData(t.prazo) ? dataCurta(t.prazo) : 'sem prazo')));
+}
+
+TELAS.tarefas = (main, h0) => {
+  const f = estado.filtroTarefas;
+  main.append(topo('Tarefas', null, h('button', { type: 'button', class: 'btn primario', onclick: () => abrirFormulario('tarefa') }, '+ Nova tarefa')));
+  const meses = [...new Set([h0.slice(0, 7), ...estado.dados.tarefas.filter((t) => ehData(t.prazo)).map((t) => t.prazo.slice(0, 7))])].sort();
+  const selMes = h('select', { id: 'filtro-mes', onchange: (e) => { f.mes = e.target.value || null; render(); } },
+    h('option', { value: '', selected: !f.mes }, 'Todos os meses'),
+    meses.map((m) => h('option', { value: m, selected: f.mes === m }, nomeMes(m))));
+  main.append(h('div', { class: 'barra-filtros' },
+    h('div', { class: 'campo-inline' }, h('label', { for: 'filtro-mes' }, 'Mês do prazo'), selMes),
+    chipsArea(f.area, (id) => { f.area = id; render(); })));
+  if (carregando('tarefas')) { main.append(textoVazio('Carregando…')); return; }
+  const g = agruparPorStatus(filtrarTarefas(estado.dados.tarefas, f));
+  const ordenar = (lista) => lista.sort((a, b) => (a.prazo || '9999') < (b.prazo || '9999') ? -1 : (a.prazo || '9999') > (b.prazo || '9999') ? 1 : 0);
+  const grupos = [['a_fazer', 'A fazer'], ['fazendo', 'Fazendo'], ['feito', 'Feito']];
+  if (g.invalidas.length) grupos.push(['invalidas', 'Com problema']);
+  main.append(h('div', { class: 'grade-tarefas' }, grupos.map(([k, nome]) =>
+    h('section', { class: 'bloco grupo' },
+      h('header', null, h('h2', null, nome), h('span', { class: 'mono muted' }, g[k].length)),
+      g[k].length ? h('ul', { class: 'lista' }, ordenar(g[k]).map((t) => linhaTarefa(t, h0))) : textoVazio(k === 'feito' ? 'Nada concluído ainda.' : 'Nenhuma tarefa aqui.')))));
+};
+
+// ---------- Ajustes ----------
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+const resumoContagens = (c) => [plural(c.areas, 'área', 'áreas'), plural(c.disciplinas, 'disciplina', 'disciplinas'),
+  plural(c.eventos, 'evento', 'eventos'), plural(c.tarefas, 'tarefa', 'tarefas'), plural(c.ponto || 0, 'dia de ponto', 'dias de ponto')].join(', ');
+
+function escolherTema(t) {
+  estado.tema = t;
+  gravarLocal('dshub.tema', t);
+  aplicarTema();
+  render();
+}
+
+async function exportarBackup() {
+  let tudo;
+  try { tudo = await estado.store.lerTudo(); } catch (e) { avisar(traduzirErro(e), 'erro'); return; }
+  const h0 = hoje();
+  try {
+    const blob = new Blob([JSON.stringify(montarBackup(tudo, agoraISO(new Date())), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: nomeBackup(h0), hidden: true });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  } catch {
+    avisar('Exportação cancelada ou bloqueada.', 'erro');
+    return;
+  }
+  estado.ultimoBackup = h0;
+  gravarLocal('dshub.ultimoBackup', h0);
+  avisar('Backup salvo');
+  render();
+}
+
+async function importarArquivo(input, caixaErros) {
+  caixaErros.replaceChildren();
+  const arq = input.files && input.files[0];
+  input.value = '';
+  if (!arq) return;
+  let obj;
+  try { obj = JSON.parse(await arq.text()); } catch { caixaErros.append(h('p', null, 'O arquivo não é um JSON válido.')); return; }
+  const v = validarBackup(obj);
+  if (!v.ok) { caixaErros.append(h('ul', null, v.erros.map((x) => h('li', null, x)))); return; }
+  const quando = typeof obj.exportado_em === 'string' ? ` exportado em ${obj.exportado_em.slice(0, 10)}` : '';
+  const modo = await confirmar(`Backup${quando}: ${resumoContagens(v.contagens)}. Mesclar mantém o que já existe e sobrescreve itens com o mesmo id. Substituir apaga o que não estiver no backup.`, [
+    { rotulo: 'Mesclar', valor: 'mesclar' },
+    { rotulo: 'Substituir tudo', valor: 'substituir', perigo: true },
+    { rotulo: 'Cancelar', valor: null },
+  ]);
+  if (!modo) return;
+  try {
+    const r = await estado.store.importar(obj, modo);
+    avisar(`${r.gravados} itens importados`);
+  } catch (e) {
+    // a tela de Ajustes pode ter sido redesenhada durante a importação: avisar em toast
+    avisar(`Importação interrompida: ${e && e.code ? traduzirErro(e) : 'o banco recusou um dos itens do backup.'} Confira os dados e importe de novo.`, 'erro');
+  }
+}
+
+TELAS.ajustes = (main, h0) => {
+  main.append(topo('Ajustes'));
+  const tema = estado.tema;
+  const aparencia = bloco('Aparência', h('div', { class: 'chips' },
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(tema !== 'claro'), onclick: () => escolherTema('escuro') }, 'Tema escuro'),
+    h('button', { type: 'button', class: 'chip', 'aria-pressed': String(tema === 'claro'), onclick: () => escolherTema('claro') }, 'Tema claro')));
+
+  const cores = bloco('Cores das áreas', h('div', { class: 'cores' }, AREAS_PADRAO.map((a) => {
+    const atual = (estado.dados.areas.find((x) => x.id === a.id) || a).cor;
+    return h('label', { class: 'cor', for: 'cor-' + a.id },
+      h('input', { type: 'color', id: 'cor-' + a.id, value: atual, onchange: async (e) => {
+        try { await estado.store.atualizar('areas', a.id, { cor: e.target.value }); avisar('Cor atualizada'); } catch (err) { avisar(traduzirErro(err), 'erro'); }
+      } }),
+      nomeArea(a.id));
+  })));
+
+  const dias = diasDesde(estado.ultimoBackup, h0);
+  const textoUltimo = dias === null ? 'Nenhum backup exportado ainda neste navegador.' : dias === 0 ? 'Último backup: hoje.' : `Último backup: há ${plural(dias, 'dia', 'dias')}.`;
+  const caixaErros = h('div', { class: 'erros', role: 'alert' });
+  const arquivo = h('input', { type: 'file', id: 'arquivo-backup', accept: '.json,application/json', onchange: (e) => importarArquivo(e.target, caixaErros) });
+  const backup = bloco('Backup', h('div', { class: 'backup' },
+    h('p', { class: dias === null || dias > 30 ? 'aviso' : 'muted' }, textoUltimo, dias === null || dias > 30 ? ' Exporte um backup de vez em quando: se o hub for apagado, os dados vão junto.' : ''),
+    h('div', { class: 'acoes' },
+      h('button', { type: 'button', class: 'btn primario', onclick: exportarBackup }, 'Exportar backup')),
+    h('div', { class: 'campo' }, h('label', { for: 'arquivo-backup' }, 'Arquivo de backup'), arquivo,
+      h('small', { class: 'muted' }, 'Escolha um .json exportado pelo Ds Hub. Antes de gravar, o hub mostra um resumo e pergunta como importar.')),
+    caixaErros));
+
+  const conta = bloco('Conta', h('div', { class: 'backup' },
+    h('p', null, 'Conectado como ', h('strong', null, estado.usuario?.email || '—'), '.'),
+    h('div', { class: 'acoes' }, h('button', { type: 'button', class: 'btn', onclick: () => sairDaConta(estado.fb) }, 'Sair'))));
+  main.append(h('div', { class: 'grade-ajustes' }, aparencia, cores, conta, backup));
+};
+
+// ---------- Ponto ----------
+const NOMES_TIPO_DIA = { normal: 'Normal', prova: 'Dia de prova', feriado: 'Feriado', ferias: 'Férias / recesso' };
+const ROTULO_TAG_DIA = { prova: 'prova', feriado: 'feriado', ferias: 'férias' };
+const pontoDoDia = (data) => estado.dados.ponto.find((p) => p.id === data || p.data === data);
+const temProvaHoje = (h0) => estado.dados.eventos.some((e) => e.tipo === 'prova' && e.data === h0);
+
+async function bater(h0, esperado, botao) {
+  const agora = new Date();
+  const dia = hojeSP(agora);
+  if (dia !== h0) {
+    avisar('O dia virou. A tela foi atualizada; confira o ponto antes de bater.', 'erro');
+    render();
+    return;
+  }
+  const hora = horaSP(agora);
+  if (botao) botao.disabled = true;
+  try {
+    const r = await estado.store.baterPonto(dia, hora, esperado);
+    if (r === 'entrada') avisar(`Entrada registrada às ${hora}`);
+    else if (r === 'saida') avisar(`Saída registrada às ${hora}`);
+    else avisar('O ponto de hoje já está completo.');
+  } catch (e) {
+    avisar(e && e.code ? traduzirErro(e) : e.message, 'erro');
+    render();
+  } finally {
+    if (botao) botao.disabled = false;
+  }
+}
+
+function botaoPonto(h0) {
+  const p = pontoDoDia(h0);
+  const st = estadoBotaoPonto(p);
+  if (st === 'completo') return h('button', { type: 'button', class: 'btn btn-ponto', disabled: true }, 'Ponto de hoje completo');
+  const rotulo = st === 'entrada' ? 'Bater entrada' : `Bater saída · entrou às ${p.entrada}`;
+  return h('button', { type: 'button', class: 'btn primario btn-ponto', onclick: (e) => bater(h0, st, e.currentTarget) }, rotulo);
+}
+
+function sugestaoProva(h0) {
+  const p = pontoDoDia(h0);
+  if (!temProvaHoje(h0) || (p && p.tipo && p.tipo !== 'normal')) return null;
+  return h('div', { class: 'sugestao' }, h('span', null, 'Hoje tem prova. Marcar como dia de prova?'),
+    h('button', { type: 'button', class: 'btn mini', onclick: async () => {
+      try { await estado.store.salvarDia(h0, { tipo: 'prova' }, { editado: false }); avisar('Marcado como dia de prova'); } catch (e) { avisar(traduzirErro(e), 'erro'); }
+    } }, 'Marcar'));
+}
+
+function resumoHoje(h0) {
+  const p = pontoDoDia(h0);
+  const T = trabalhadoMin(p);
+  const S = saldoDia(p || { tipo: 'normal' });
+  const linhas = [];
+  if (p && p.tipo && p.tipo !== 'normal') linhas.push(h('span', { class: 'tag' }, ROTULO_TAG_DIA[p.tipo] || p.tipo));
+  if (p && ehHora(p.entrada)) linhas.push(h('span', null, 'Entrada ', h('strong', { class: 'mono' }, p.entrada)));
+  if (p && ehHora(p.saida)) linhas.push(h('span', null, 'Saída ', h('strong', { class: 'mono' }, p.saida)));
+  if (T !== null) linhas.push(h('span', null, 'Trabalhado ', h('strong', { class: 'mono' }, formatarDuracao(T))));
+  else if (p && ehHora(p.entrada) && !ehHora(p.saida)) {
+    const corrido = minutos(horaSP(new Date())) - minutos(p.entrada);
+    if (corrido > 0) linhas.push(h('span', { class: 'muted' }, 'em andamento há ', h('strong', { class: 'mono' }, formatarDuracao(corrido))));
+  }
+  if (S !== null && (T !== null || (p && p.tipo !== 'normal'))) linhas.push(h('span', null, 'Saldo ', h('strong', { class: 'mono saldo ' + (S < 0 ? 'neg' : S > 0 ? 'pos' : '') }, formatarSaldo(S))));
+  return h('div', { class: 'ponto-hoje' }, botaoPonto(h0), sugestaoProva(h0), linhas.length ? h('div', { class: 'ponto-linhas' }, linhas) : null);
+}
+
+function cardPonto(h0) {
+  return bloco('Ponto de hoje', resumoHoje(h0));
+}
+
+TELAS.ponto = (main, h0) => {
+  const mes = estado.mesPonto || h0.slice(0, 7);
+  main.append(topo('Ponto', 'Jornada de 6 h por dia · banco de horas',
+    h('button', { type: 'button', class: 'btn', onclick: () => abrirFormulario('periodo', null, { de: h0, ate: h0, tipo: 'feriado' }) }, 'Feriado ou férias'),
+    h('button', { type: 'button', class: 'btn primario', onclick: () => abrirFormulario('ponto', null, { data: h0, tipo: 'normal' }) }, '+ Adicionar dia')));
+  if (carregando('ponto')) { main.append(textoVazio('Carregando…')); return; }
+  const r = resumoPonto(estado.dados.ponto, h0, mes);
+  const semanaPct = Math.min(100, (r.semanaMin / (30 * 60)) * 100);
+  const cls = (v) => 'mono saldo ' + (v < 0 ? 'neg' : v > 0 ? 'pos' : '');
+  const resumo = bloco('Resumo', h('div', { class: 'resumo-ponto' },
+    h('div', { class: 'kpi' }, h('small', null, `Saldo de ${nomeMes(mes)}`), h('strong', { class: cls(r.saldoMes) }, formatarSaldo(r.saldoMes))),
+    h('div', { class: 'kpi' }, h('small', null, 'Saldo acumulado'), h('strong', { class: cls(r.saldoTotal) }, formatarSaldo(r.saldoTotal))),
+    h('div', { class: 'kpi kpi-semana' }, h('small', null, 'Esta semana (dom–sáb)'),
+      h('strong', { class: 'mono' }, `${formatarDuracao(r.semanaMin)} de 30:00`),
+      h('div', { class: 'barra ' + (r.semanaMin > 30 * 60 ? 'vermelho' : 'verde'), role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 1800, 'aria-valuenow': r.semanaMin, 'aria-label': 'Horas na semana' },
+        h('span', { style: `width:${semanaPct}%` })),
+      h('small', { class: 'muted' }, 'Limite da Lei do Estágio (11.788/2008, art. 10): 6 h/dia e 30 h/semana.'))));
+  const cab = h('div', { class: 'cal-cab' },
+    h('button', { type: 'button', class: 'btn mini', 'aria-label': 'Mês anterior', onclick: () => { estado.mesPonto = mudarMes(mes, -1); render(); } }, '‹'),
+    h('h2', null, nomeMes(mes)),
+    h('button', { type: 'button', class: 'btn mini', 'aria-label': 'Próximo mês', onclick: () => { estado.mesPonto = mudarMes(mes, 1); render(); } }, '›'));
+  const lista = r.diasMes.length ? h('ul', { class: 'lista dias-ponto' }, r.diasMes.map((d) => h('li', null,
+    h('button', { type: 'button', class: 'item', onclick: () => abrirFormulario('ponto', d) },
+      h('span', { class: 'item-hora mono' }, dataCurta(d.data)),
+      h('span', { class: 'item-titulo mono' }, `${d.entrada || '--:--'} → ${d.saida || '--:--'}`),
+      d.tipo && d.tipo !== 'normal' ? h('span', { class: 'tag' }, ROTULO_TAG_DIA[d.tipo] || d.tipo) : null,
+      d.editado ? h('span', { class: 'tag atrasada' }, 'editado') : null,
+      h('span', { class: 'mono muted' }, d.T !== null ? formatarDuracao(d.T) : ''),
+      h('span', { class: cls(d.S ?? 0) + ' saldo-dia' }, d.S === null ? 'aberto' : formatarSaldo(d.S))))))
+    : textoVazio('Nenhum registro neste mês.');
+  main.append(h('div', { class: 'grade-ponto' },
+    bloco('Hoje', resumoHoje(h0)),
+    resumo,
+    h('section', { class: 'bloco mes-ponto' }, cab, lista)));
+};
+
+// ---------- formulário lateral ----------
+const NOMES_TIPO = { prova: 'Prova', compromisso: 'Compromisso', prazo: 'Prazo', outro: 'Outro' };
+const NOMES_STATUS = { a_fazer: 'A fazer', fazendo: 'Fazendo', feito: 'Feito' };
+const COLECAO_DO_TIPO = { evento: 'eventos', tarefa: 'tarefas', disciplina: 'disciplinas', ponto: 'ponto' };
+const TITULO_FORM = { evento: ['Novo evento', 'Editar evento'], tarefa: ['Nova tarefa', 'Editar tarefa'], disciplina: ['Nova disciplina', 'Editar disciplina'], ponto: ['Adicionar dia de ponto', 'Editar ponto'], periodo: ['Feriado ou férias', 'Feriado ou férias'] };
+
+const nomeArea = (id) => (estado.dados.areas.find((a) => a.id === id) || AREAS_PADRAO.find((a) => a.id === id) || { nome: id }).nome;
+const disciplinasAtivas = () => estado.dados.disciplinas.filter((d) => d.ativa !== false).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+
+function campo(rotulo, id, controle, dica) {
+  controle.id = id;
+  return h('div', { class: 'campo', 'data-campo': id }, h('label', { for: id }, rotulo), controle, dica ? h('small', { class: 'muted' }, dica) : null);
+}
+const entrada = (tipo, valor, extra = {}) => h('input', { type: tipo, value: valor ?? '', ...extra });
+function seletor(opcoes, valor) {
+  return h('select', null, opcoes.map(([v, t]) => h('option', { value: v, selected: v === (valor ?? '') }, t)));
+}
+
+function camposDoTipo(tipo, r) {
+  const areas = AREAS_PADRAO.map((a) => [a.id, nomeArea(a.id)]);
+  const opDisc = [['', '— nenhuma —'], ...disciplinasAtivas().map((d) => [d.id, d.sigla ? `${d.sigla} · ${d.nome}` : d.nome])];
+  if (tipo === 'evento') return [
+    campo('Título', 'f-titulo', entrada('text', r.titulo, { autocomplete: 'off' })),
+    h('div', { class: 'linha' },
+      campo('Área', 'f-area', seletor(areas, r.area || 'pessoal')),
+      campo('Tipo', 'f-tipo', seletor(TIPOS_EVENTO.map((t) => [t, NOMES_TIPO[t]]), r.tipo || 'compromisso'))),
+    campo('Data', 'f-data', entrada('date', r.data || hoje())),
+    h('div', { class: 'linha' },
+      campo('Início', 'f-hora_inicio', entrada('time', r.hora_inicio)),
+      campo('Fim', 'f-hora_fim', entrada('time', r.hora_fim))),
+    campo('Disciplina', 'f-disciplina_id', seletor(opDisc, r.disciplina_id)),
+    campo('Local', 'f-local', entrada('text', r.local)),
+    campo('Notas', 'f-notas', h('textarea', { rows: 3, value: r.notas ?? '' })),
+  ];
+  if (tipo === 'ponto') return [
+    campo('Data', 'f-data', entrada('date', r.data || hoje(), { readonly: r.id ? true : null })),
+    h('div', { class: 'linha' },
+      campo('Entrada', 'f-entrada', entrada('time', r.entrada)),
+      campo('Saída', 'f-saida', entrada('time', r.saida))),
+    campo('Tipo do dia', 'f-tipo', seletor(TIPOS_DIA.map((t) => [t, NOMES_TIPO_DIA[t]]), r.tipo || 'normal')),
+    campo('Notas', 'f-notas', h('textarea', { rows: 2, value: r.notas ?? '' })),
+  ];
+  if (tipo === 'periodo') return [
+    h('div', { class: 'linha' },
+      campo('De', 'f-de', entrada('date', r.de || hoje())),
+      campo('Até', 'f-ate', entrada('date', r.ate || r.de || hoje()))),
+    campo('Tipo', 'f-tipo', seletor([['feriado', 'Feriado'], ['ferias', 'Férias / recesso']], r.tipo || 'feriado')),
+    h('small', { class: 'muted' }, `Até ${MAX_DIAS_PERIODO} dias por vez. Horários já batidos nesses dias são mantidos.`),
+  ];
+  if (tipo === 'tarefa') return [
+    campo('Título', 'f-titulo', entrada('text', r.titulo, { autocomplete: 'off' })),
+    h('div', { class: 'linha' },
+      campo('Área', 'f-area', seletor(areas, r.area || 'pessoal')),
+      campo('Status', 'f-status', seletor(STATUS.map((s) => [s, NOMES_STATUS[s]]), r.status || 'a_fazer'))),
+    campo('Prazo', 'f-prazo', entrada('date', r.prazo), 'Opcional'),
+    campo('Disciplina', 'f-disciplina_id', seletor(opDisc, r.disciplina_id)),
+    campo('Notas', 'f-notas', h('textarea', { rows: 3, value: r.notas ?? '' })),
+  ];
+  return [
+    campo('Nome', 'f-nome', entrada('text', r.nome, { autocomplete: 'off' })),
+    h('div', { class: 'linha' },
+      campo('Sigla', 'f-sigla', entrada('text', r.sigla)),
+      campo('Semestre', 'f-semestre', entrada('text', r.semestre, { placeholder: '2026-2' }))),
+    h('div', { class: 'linha' },
+      campo('Total de aulas', 'f-aulas_totais', entrada('number', r.aulas_totais, { min: 0, step: 1, inputmode: 'numeric' })),
+      campo('Frequência mínima (%)', 'f-frequencia_minima_pct', entrada('number', r.frequencia_minima_pct, { min: 0, max: 100, step: 'any', inputmode: 'decimal' }))),
+    h('small', { class: 'muted' }, 'Use a mesma unidade (aulas ou horas-aula) no total e nas faltas. Deixe em branco se não souber.'),
+    campo('Faltas até agora', 'f-faltas', entrada('number', r.faltas ?? 0, { min: 0, step: 1, inputmode: 'numeric' })),
+    h('label', { class: 'check' }, h('input', { type: 'checkbox', id: 'f-ativa', checked: r.ativa !== false }), ' Disciplina ativa neste semestre'),
+  ];
+}
+
+function lerFormulario(tipo, form) {
+  const v = (id) => { const el = form.querySelector('#f-' + id); return el ? el.value.trim() : ''; };
+  const ouNull = (s) => (s === '' ? null : s);
+  const numero = (s) => (s === '' ? null : Number(s));
+  if (tipo === 'evento') {
+    const area = v('area');
+    return { titulo: v('titulo'), area, tipo: v('tipo'), data: v('data'), hora_inicio: ouNull(v('hora_inicio')), hora_fim: ouNull(v('hora_fim')),
+      disciplina_id: area === 'faculdade' ? ouNull(v('disciplina_id')) : null, local: ouNull(v('local')), notas: ouNull(v('notas')) };
+  }
+  if (tipo === 'ponto') return { data: v('data'), entrada: ouNull(v('entrada')), saida: ouNull(v('saida')), tipo: v('tipo'), notas: ouNull(v('notas')) };
+  if (tipo === 'periodo') return { de: v('de'), ate: v('ate'), tipo: v('tipo') };
+  if (tipo === 'tarefa') {
+    const area = v('area');
+    return { titulo: v('titulo'), area, status: v('status'), prazo: ouNull(v('prazo')),
+      disciplina_id: area === 'faculdade' ? ouNull(v('disciplina_id')) : null, notas: ouNull(v('notas')) };
+  }
+  return { nome: v('nome'), sigla: ouNull(v('sigla')), semestre: ouNull(v('semestre')), ativa: form.querySelector('#f-ativa').checked,
+    aulas_totais: numero(v('aulas_totais')), frequencia_minima_pct: numero(v('frequencia_minima_pct')), faltas: numero(v('faltas')) ?? 0 };
+}
+function validarPeriodo(o) {
+  try { diasIntervalo(o.de, o.ate); return []; } catch (e) { return [e.message]; }
+}
+const VALIDAR = { evento: (o) => validarEvento(o), tarefa: (o) => validarTarefa(o), disciplina: (o) => validarDisciplina(o), ponto: (o) => validarPonto(o), periodo: validarPeriodo };
+
+function fecharFormulario() {
+  const p = $('.painel-form');
+  if (p) { p.remove(); document.removeEventListener('keydown', escFecha); render(); }
+}
+function escFecha(e) { if (e.key === 'Escape' && !$('.modal')) fecharFormulario(); }
+
+function abrirFormulario(tipo, registro, padroes) {
+  $('.painel-form')?.remove();
+  const r = { ...(padroes || {}), ...(registro || {}) };
+  const editando = Boolean(registro && registro.id);
+  const caixaErros = h('div', { class: 'erros', role: 'alert' });
+  const corpo = h('div', { class: 'campos' }, camposDoTipo(tipo, r));
+  const botaoSalvar = h('button', { type: 'submit', class: 'btn primario' }, 'Salvar');
+  const acoes = h('div', { class: 'acoes' },
+    editando ? h('button', { type: 'button', class: 'btn perigo', onclick: () => excluirRegistro(tipo, registro) }, 'Excluir') : null,
+    h('span', { class: 'espaco' }),
+    h('button', { type: 'button', class: 'btn', onclick: fecharFormulario }, 'Cancelar'),
+    botaoSalvar);
+  const form = h('form', { class: 'form', novalidate: true }, corpo, caixaErros, acoes);
+
+  const ajustarDisciplina = () => {
+    const area = form.querySelector('#f-area');
+    const bloco = form.querySelector('[data-campo="f-disciplina_id"]');
+    if (area && bloco) bloco.hidden = area.value !== 'faculdade';
+  };
+  form.addEventListener('change', ajustarDisciplina);
+
+  async function salvar(e) {
+    e?.preventDefault();
+    const obj = lerFormulario(tipo, form);
+    const erros = VALIDAR[tipo](obj);
+    caixaErros.replaceChildren();
+    if (erros.length) { caixaErros.append(h('ul', null, erros.map((x) => h('li', null, x)))); return; }
+    botaoSalvar.disabled = true;
+    try {
+      const c = COLECAO_DO_TIPO[tipo];
+      if (tipo === 'periodo') {
+        const n = await estado.store.marcarPeriodo(obj.de, obj.ate, obj.tipo);
+        fecharFormulario();
+        avisar(`${n} dia(s) marcados`);
+        return;
+      }
+      if (tipo === 'ponto' && !editando && pontoDoDia(obj.data)) {
+        caixaErros.append(h('p', null, 'Esse dia já tem registro. Feche e use a lista do mês para editá-lo.'));
+        return;
+      }
+      if (tipo === 'ponto') {
+        const mudouHora = obj.entrada !== (r.entrada ?? null) || obj.saida !== (r.saida ?? null);
+        const { data, ...campos } = obj;
+        await estado.store.salvarDia(data, campos, { editado: mudouHora && Boolean(obj.entrada || obj.saida) });
+      } else if (editando) await estado.store.atualizar(c, registro.id, obj);
+      else await estado.store.criar(c, obj);
+      fecharFormulario();
+      avisar('Salvo');
+    } catch (err) {
+      caixaErros.append(h('p', null, traduzirErro(err)), h('button', { type: 'button', class: 'btn mini', onclick: salvar }, 'Tentar de novo'));
+    } finally {
+      botaoSalvar.disabled = false;
+    }
+  }
+  form.addEventListener('submit', salvar);
+
+  const painel = h('div', { class: 'painel-form' },
+    h('div', { class: 'veu', onclick: fecharFormulario }),
+    h('aside', { class: 'painel', role: 'dialog', 'aria-modal': 'true', 'aria-label': TITULO_FORM[tipo][editando ? 1 : 0] },
+      h('header', null, h('h2', null, TITULO_FORM[tipo][editando ? 1 : 0]),
+        h('button', { type: 'button', class: 'btn mini', 'aria-label': 'Fechar', onclick: fecharFormulario }, '✕')),
+      form));
+  document.body.append(painel);
+  document.addEventListener('keydown', escFecha);
+  ajustarDisciplina();
+  form.querySelector('input')?.focus();
+}
+
+// ---------- confirmação dentro da página ----------
+function confirmar(mensagem, opcoes) {
+  return new Promise((resolver) => {
+    const fim = (v) => { modal.remove(); document.removeEventListener('keydown', esc, true); resolver(v); };
+    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); fim(null); } };
+    const modal = h('div', { class: 'modal' },
+      h('div', { class: 'veu', onclick: () => fim(null) }),
+      h('div', { class: 'caixa', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': 'Confirmação' },
+        h('p', null, mensagem),
+        h('div', { class: 'acoes' }, opcoes.map((o) => h('button', {
+          type: 'button', class: 'btn' + (o.perigo ? ' perigo cheio' : ''), onclick: () => fim(o.valor),
+        }, o.rotulo)))));
+    document.body.append(modal);
+    document.addEventListener('keydown', esc, true);
+    modal.querySelector('button')?.focus();
+  });
+}
+
+async function excluirRegistro(tipo, registro) {
+  const c = COLECAO_DO_TIPO[tipo];
+  try {
+    if (tipo === 'disciplina') {
+      const itens = await estado.store.itensDaDisciplina(registro.id);
+      const n = itens.eventos.length + itens.tarefas.length;
+      let modo = 'excluir';
+      if (n) {
+        modo = await confirmar(`Esta disciplina tem ${itens.eventos.length} evento(s) e ${itens.tarefas.length} tarefa(s) ligados.`, [
+          { rotulo: 'Desvincular itens', valor: 'desvincular' },
+          { rotulo: 'Excluir tudo', valor: 'excluir', perigo: true },
+          { rotulo: 'Cancelar', valor: null },
+        ]);
+      } else {
+        modo = (await confirmar(`Excluir a disciplina "${registro.nome}"?`, [
+          { rotulo: 'Excluir', valor: 'excluir', perigo: true }, { rotulo: 'Cancelar', valor: null }])) && 'excluir';
+      }
+      if (!modo) return;
+      await estado.store.excluirDisciplina(registro.id, modo);
+    } else {
+      const nomeItem = registro.titulo || (registro.data && tipo === 'ponto' ? `o ponto de ${dataCurta(registro.data)}` : 'este item');
+      const ok = await confirmar(`Excluir "${nomeItem}"?`, [
+        { rotulo: 'Excluir', valor: true, perigo: true }, { rotulo: 'Cancelar', valor: null }]);
+      if (!ok) return;
+      await estado.store.excluir(c, registro.id);
+    }
+    fecharFormulario();
+    avisar('Excluído');
+  } catch (err) {
+    avisar(traduzirErro(err), 'erro');
+  }
+}
+
+// ---------- inicialização ----------
+// Precisa existir ANTES do <script type="module"> rodar (ele roda antes do DOMContentLoaded).
+window.__dsFirebaseConfig = { config: FIREBASE_CONFIG, versao: FIREBASE_VERSAO };
+let firebaseSinalizado = false;
+document.addEventListener('ds-firebase', () => { firebaseSinalizado = true; }, { once: true });
+
+function esperarFirebase(ms) {
+  if (window.__dsFirebase || firebaseSinalizado) return Promise.resolve(window.__dsFirebase || null);
+  return new Promise((resolver) => {
+    const fim = () => resolver(window.__dsFirebase || null);
+    document.addEventListener('ds-firebase', fim, { once: true });
+    setTimeout(fim, ms);
+  });
+}
+
+function telaLogin(fb, erro) {
+  const msg = h('p', { class: 'erro-login', role: 'alert' }, erro || '');
+  const botao = h('button', { type: 'button', class: 'btn primario grande', onclick: async () => {
+    botao.disabled = true;
+    msg.textContent = '';
+    try { await fb.entrar(); } catch (e) { msg.textContent = mensagemErroLogin(e) || ''; } finally { botao.disabled = false; }
+  } }, 'Entrar com Google');
+  $('#app').replaceChildren(h('div', { class: 'estado-tela login' },
+    h('h1', null, 'Ds Hub'),
+    h('p', null, 'Agenda, tarefas, faculdade e ponto num lugar só. Entre com a sua conta Google.'),
+    botao, msg));
+}
+
+function telaPrivado(fb, email) {
+  $('#app').replaceChildren(h('div', { class: 'estado-tela' },
+    h('h1', null, 'Este hub é privado'),
+    h('p', null, 'Você entrou como ', h('strong', null, email || '(sem e-mail)'), '. Só a conta dona deste hub pode ver e editar o conteúdo. Se esta é a sua conta de dona, confira se as regras do Firestore foram publicadas.'),
+    h('div', { class: 'acoes' }, h('button', { type: 'button', class: 'btn', onclick: () => sairDaConta(fb) }, 'Sair'))));
+}
+
+async function sairDaConta(fb) {
+  try { await fb.sair(); } catch (e) { avisar('Não consegui sair. Tente de novo.', 'erro'); }
+}
+
+function iniciarHub(fs) {
+  estado.bloqueado = false;
+  estado.store = criarStore(criarFirebaseDb(fs));
+  estado.mesVisivel = hoje().slice(0, 7);
+  montarCasca();
+  render();
+  const semPermissao = 'Sem permissão para acessar os dados do hub.';
+  const aoErro = (msg) => {
+    if (msg === semPermissao) {
+      if (estado.bloqueado) return;
+      estado.bloqueado = true;
+      pararHub();
+      telaPrivado(estado.fb, estado.usuario?.email);
+      return;
+    }
+    avisar(msg, 'erro');
+  };
+  estado.assinaturas = COLECOES.map((c) => estado.store.assinar(c, (itens) => {
+    estado.dados[c] = itens;
+    estado.pronto.add(c);
+    if (!$('.painel-form') && !estado.bloqueado) render();
+  }, aoErro));
+  estado.store.garantirAreas().catch((e) => { if (e && e.code === 'not_granted') aoErro(semPermissao); else avisar(traduzirErro(e), 'erro'); });
+}
+
+function pararHub() {
+  for (const parar of estado.assinaturas || []) try { parar(); } catch { /* já parado */ }
+  estado.assinaturas = [];
+  estado.store = null;
+  estado.pronto = new Set();
+  estado.dados = Object.fromEntries(COLECOES.map((c) => [c, []]));
+}
+
+async function iniciar() {
+  estado.tema = lerLocal('dshub.tema') === 'claro' ? 'claro' : 'escuro';
+  estado.ultimoBackup = lerLocal('dshub.ultimoBackup');
+  aplicarTema();
+  const inicial = (location.hash || '').slice(1);
+  if (ROTAS.some(([id]) => id === inicial)) estado.rota = inicial;
+  const fb = await esperarFirebase(FIREBASE_CONFIG ? 15000 : 1500);
+  if (!fb) {
+    telaEstado('Não consegui conectar ao Firebase', FIREBASE_CONFIG
+      ? 'Verifique a internet e recarregue a página. Se continuar, a rede pode estar bloqueando o Google/Firebase.'
+      : 'O hub ainda não foi configurado com um projeto Firebase.');
+    return;
+  }
+  fb.aoMudarUsuario((user) => {
+    estado.usuario = user || null;
+    if (!user) { pararHub(); telaLogin(fb); return; }
+    // Se esta conta não for a dona, as regras do Firestore recusam e o hub mostra "Este hub é privado".
+    if (!estado.store) iniciarHub(fb.fs);
+  });
+  estado.fb = fb;
+}
+
+// Atualiza o tempo "em andamento" do ponto e o "hoje" a cada minuto (sem atrapalhar quem está digitando).
+setInterval(() => { if (estado.store) { estado.renderPendente = true; talvezRender(); } }, 60000);
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar);
+else iniciar();
+
+})();
+</script>
+<script type="module">
+// Carrega o SDK do Firebase (gstatic) e entrega ao hub em window.__dsFirebase.
+const cfg = window.__dsFirebaseConfig;
+if (cfg && cfg.config && !window.__dsFirebase) {
+  try {
+    const B = `https://www.gstatic.com/firebasejs/${cfg.versao}/`;
+    const [app, auth, fst] = await Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-auth.js'), import(B + 'firebase-firestore.js')]);
+    const a = app.initializeApp(cfg.config);
+    const au = auth.getAuth(a);
+    const db = fst.getFirestore(a);
+    window.__dsFirebase = {
+      entrar: () => auth.signInWithPopup(au, new auth.GoogleAuthProvider()),
+      sair: () => auth.signOut(au),
+      aoMudarUsuario: (f) => auth.onAuthStateChanged(au, f),
+      fs: {
+        db, collection: fst.collection, doc: fst.doc, getDoc: fst.getDoc, getDocs: fst.getDocs, setDoc: fst.setDoc,
+        updateDoc: fst.updateDoc, deleteDoc: fst.deleteDoc, onSnapshot: fst.onSnapshot, query: fst.query,
+        where: fst.where, orderBy: fst.orderBy, limit: fst.limit,
+      },
+    };
+  } catch (e) {
+    window.__dsFirebaseErro = String(e && e.message || e);
+  }
+}
+document.dispatchEvent(new Event('ds-firebase'));
+</script>
+</body>
+</html>

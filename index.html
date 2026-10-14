@@ -326,7 +326,8 @@ const FIREBASE_CONFIG = {
 const FIREBASE_VERSAO = '12.19.0';
 // Assistente (Firebase AI Logic, Gemini Developer API, plano gratuito). Sem a site key do reCAPTCHA Enterprise,
 // o App Check não liga e o assistente fica indisponível (o resto do hub funciona normalmente).
-const GEMINI_MODELO = 'gemini-3.8-flash';
+// Em ordem de preferência: se um modelo responder 500/503 (sobrecarga), tenta o próximo. Todos estáveis e sem Blaze no AI Logic (conferido 2026-10-14).
+const GEMINI_MODELOS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
 const RECAPTCHA_SITE_KEY = '6LfiU-4tAAAAAJ1tPczwSPGj8Z1ComZ7Lq6g0iiE'; // pública (como a firebaseConfig); chave "ds-hub-web", domínio dsinhozinho.github.io
 
 // logic.js — funções puras do Ds Hub (sem DOM, sem db).
@@ -698,6 +699,7 @@ function montarPrompt(frase, ctx) {
     'Disciplinas (use disciplina_id SOMENTE com um destes ids):',
     discs,
     'Não invente horário, local ou disciplina que a frase não diga. Se faltar algo importante, preencha "duvida" com uma pergunta curta.',
+    'Preencha todos os campos; os que não se aplicam ou que a frase não diz vão como null. O titulo curto: só o nome da atividade, sem explicações.',
     'Uma frase pode gerar várias ações. Se não houver nada a criar, devolva {"acoes": []}.',
     '',
     `Frase: ${frase}`,
@@ -771,6 +773,7 @@ function erroAssistente(e, online) {
   const code = String((e && e.code) || '');
   const status = e && e.customErrorData && e.customErrorData.status; // AIError do firebase/ai (12.19.0)
   if (status === 429 || /\b429\b|RESOURCE_EXHAUSTED/i.test(msg) || /resource-exhausted/i.test(code)) return 'Limite gratuito atingido por agora. Tente mais tarde ou crie pelo formulário.';
+  if (status === 500 || status === 503) return 'O Gemini está sobrecarregado agora. Tente de novo em instantes.';
   if (code.startsWith('appCheck/') || /app ?check/i.test(msg)) return 'O Firebase recusou a verificação deste site (App Check). Recarregue a página.';
   return 'Não consegui falar com o Gemini. Tente de novo.';
 }
@@ -1967,7 +1970,7 @@ async function excluirRegistro(tipo, registro) {
 
 // ---------- inicialização ----------
 // Precisa existir ANTES do <script type="module"> rodar (ele roda antes do DOMContentLoaded).
-window.__dsFirebaseConfig = { config: FIREBASE_CONFIG, versao: FIREBASE_VERSAO, modelo: GEMINI_MODELO, recaptcha: RECAPTCHA_SITE_KEY };
+window.__dsFirebaseConfig = { config: FIREBASE_CONFIG, versao: FIREBASE_VERSAO, modelos: GEMINI_MODELOS, recaptcha: RECAPTCHA_SITE_KEY };
 let firebaseSinalizado = false;
 // A IA chega depois do login (index.html): quando ficar pronta, redesenha para mostrar o campo do assistente.
 document.addEventListener('ds-ia', () => { estado.renderPendente = true; talvezRender(); });
@@ -2080,28 +2083,34 @@ if (cfg && cfg.config && !window.__dsFirebase) {
     const a = app.initializeApp(cfg.config);
     const au = auth.getAuth(a);
     const db = fst.getFirestore(a);
-    if (cfg.recaptcha && cfg.modelo) carregarIA = async () => {
+    if (cfg.recaptcha && cfg.modelos && cfg.modelos.length) carregarIA = async () => {
       // Assistente: carregado DEPOIS de publicar __dsFirebase (rede lenta não atrasa o login). App Check (reCAPTCHA Enterprise) + Firebase AI Logic. Uma falha aqui não derruba login/Firestore.
       try {
         const [ac, fai] = await Promise.all([import(B + 'firebase-app-check.js'), import(B + 'firebase-ai.js')]);
         ac.initializeAppCheck(a, { provider: new ac.ReCaptchaEnterpriseProvider(cfg.recaptcha), isTokenAutoRefreshEnabled: true });
         const S = fai.Schema;
+        const n = { nullable: true }; // todos os campos obrigatórios e anuláveis: com campos opcionais o modelo enchia o titulo de texto
         const acao = S.object({
           properties: {
             tipo: S.enumString({ enum: ['evento', 'tarefa', 'falta'] }),
-            titulo: S.string(), area: S.enumString({ enum: ['faculdade', 'trabalho', 'pessoal'] }),
-            tipo_evento: S.enumString({ enum: ['prova', 'compromisso', 'prazo', 'outro'] }),
-            data: S.string(), hora_inicio: S.string(), hora_fim: S.string(), local: S.string(),
-            prazo: S.string(), disciplina_id: S.string(), quantidade: S.integer(), duvida: S.string(),
+            titulo: S.string(n), area: S.enumString({ enum: ['faculdade', 'trabalho', 'pessoal'], nullable: true }),
+            tipo_evento: S.enumString({ enum: ['prova', 'compromisso', 'prazo', 'outro'], nullable: true }),
+            data: S.string(n), hora_inicio: S.string(n), hora_fim: S.string(n), local: S.string(n),
+            prazo: S.string(n), disciplina_id: S.string(n), quantidade: S.integer(n), duvida: S.string(n),
           },
-          optionalProperties: ['titulo', 'area', 'tipo_evento', 'data', 'hora_inicio', 'hora_fim', 'local', 'prazo', 'disciplina_id', 'quantidade', 'duvida'],
         });
         const ia = fai.getAI(a, { backend: new fai.GoogleAIBackend(), useLimitedUseAppCheckTokens: true });
-        const modelo = fai.getGenerativeModel(ia, {
-          model: cfg.modelo,
-          generationConfig: { responseMimeType: 'application/json', responseSchema: S.object({ properties: { acoes: S.array({ items: acao }) } }) },
-        });
-        window.__dsFirebase.interpretar = async (prompt) => (await modelo.generateContent(prompt)).response.text();
+        const config = { responseMimeType: 'application/json', responseSchema: S.object({ properties: { acoes: S.array({ items: acao }) } }) };
+        const modelos = cfg.modelos.map((m) => fai.getGenerativeModel(ia, { model: m, generationConfig: config }));
+        window.__dsFirebase.interpretar = async (prompt) => {
+          for (let i = 0; ; i++) {
+            try { return (await modelos[i].generateContent(prompt)).response.text(); } catch (e) {
+              const st = e && e.customErrorData && e.customErrorData.status;
+              if ((st === 500 || st === 503) && i < modelos.length - 1) continue; // sobrecarga: tenta o próximo modelo
+              throw e;
+            }
+          }
+        };
         document.dispatchEvent(new Event('ds-ia'));
       } catch (e) {
         window.__dsFirebaseIAErro = String(e && e.message || e);

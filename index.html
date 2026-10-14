@@ -326,7 +326,7 @@ const FIREBASE_CONFIG = {
 const FIREBASE_VERSAO = '12.19.0';
 // Assistente (Firebase AI Logic, Gemini Developer API, plano gratuito). Sem a site key do reCAPTCHA Enterprise,
 // o App Check não liga e o assistente fica indisponível (o resto do hub funciona normalmente).
-// Em ordem de preferência: se um modelo responder 500/503 (sobrecarga), tenta o próximo. Todos estáveis e sem Blaze no AI Logic (conferido 2026-10-14).
+// Em ordem de preferência: se um modelo responder 429 (cota do modelo) ou 500/503 (sobrecarga), tenta o próximo. Todos estáveis e sem Blaze no AI Logic (conferido 2026-10-14).
 const GEMINI_MODELOS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
 const RECAPTCHA_SITE_KEY = '6LfiU-4tAAAAAJ1tPczwSPGj8Z1ComZ7Lq6g0iiE'; // pública (como a firebaseConfig); chave "ds-hub-web", domínio dsinhozinho.github.io
 
@@ -2106,7 +2106,7 @@ if (cfg && cfg.config && !window.__dsFirebase) {
           for (let i = 0; ; i++) {
             try { return (await modelos[i].generateContent(prompt)).response.text(); } catch (e) {
               const st = e && e.customErrorData && e.customErrorData.status;
-              if ((st === 500 || st === 503) && i < modelos.length - 1) continue; // sobrecarga: tenta o próximo modelo
+              if ((st === 429 || st === 500 || st === 503) && i < modelos.length - 1) continue; // cota (por modelo) ou sobrecarga: tenta o próximo modelo
               throw e;
             }
           }

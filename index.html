@@ -289,6 +289,24 @@ h2 { font-size: 1.05rem; font-weight: 600; }
 .saldo-dia { min-width: 4.5em; text-align: right; }
 @media (max-width: 900px) { .grade-ponto { grid-template-columns: minmax(0, 1fr); } }
 .dias-ponto .item-titulo { white-space: nowrap; flex: 1 0 auto; }
+
+/* ---- Assistente ---- */
+.assistente { margin-bottom: 0; }
+.cartao-acao .tag { justify-self: start; }
+.assistente-corpo { display: grid; gap: 8px; }
+.assistente-entrada { display: flex; gap: 8px; align-items: flex-start; }
+.assistente-entrada textarea { flex: 1 1 auto; min-width: 0; resize: none; max-height: 5.4em; overflow-y: auto; background: var(--bg); color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit; }
+.assistente-aviso { font-size: 0.78rem; }
+.assistente-msg { margin: 0; color: var(--warn); }
+.assistente-msg:empty { display: none; }
+.cartoes-acao { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.cartao-acao { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+.cartao-acao.salvo { opacity: 0.75; }
+.cartao-resumo { overflow-wrap: anywhere; }
+.cartao-duvida { color: var(--muted); }
+.cartao-avisos { margin: 0; padding-left: 1.1em; color: var(--warn); font-size: 0.85rem; }
+.cartao-acao .acoes { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.af-qtd { width: 4.5em; }
 </style>
 </head>
 <body>
@@ -306,6 +324,10 @@ const FIREBASE_CONFIG = {
   appId: '1:1027069662935:web:b482aabab963529bdbc292',
 };
 const FIREBASE_VERSAO = '12.19.0';
+// Assistente (Firebase AI Logic, Gemini Developer API, plano gratuito). Sem a site key do reCAPTCHA Enterprise,
+// o App Check não liga e o assistente fica indisponível (o resto do hub funciona normalmente).
+const GEMINI_MODELO = 'gemini-3.8-flash';
+const RECAPTCHA_SITE_KEY = '6LfiU-4tAAAAAJ1tPczwSPGj8Z1ComZ7Lq6g0iiE'; // pública (como a firebaseConfig); chave "ds-hub-web", domínio dsinhozinho.github.io
 
 // logic.js — funções puras do Ds Hub (sem DOM, sem db).
 const FUSO = 'America/Sao_Paulo';
@@ -653,6 +675,116 @@ function estadoBotaoPonto(p) {
   if (!p || !ehHora(p.entrada)) return 'entrada';
   if (!ehHora(p.saida)) return 'saida';
   return 'completo';
+}
+
+// assistente.js — frase → Gemini → ações (evento, tarefa, falta). Funções puras (spec do assistente, §3–§6).
+// Os nomes têm prefixo/forma próprios: o build junta todos os módulos num só escopo.
+
+const MAX_ACOES = 10;
+const MAX_FALTAS_ACAO = 10;
+const AS_NAO_ACHEI = 'Disciplina não encontrada; escolha uma.';
+const AS_DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+function montarPrompt(frase, ctx) {
+  const discs = (ctx.disciplinas || []).map((d) => `- id "${d.id}": ${d.nome}`).join('\n') || '- (nenhuma cadastrada)';
+  return [
+    'Você transforma uma frase em português em ações para uma agenda pessoal. Responda SOMENTE com o JSON pedido.',
+    `Hoje é ${ctx.diaSemana}, ${ctx.hoje} (fuso America/Sao_Paulo). Resolva datas relativas ("amanhã", "sexta", "dia 23") a partir de hoje, no formato AAAA-MM-DD; horas no formato HH:MM (24 h).`,
+    `Áreas: ${AREAS.join(', ')}. Use "faculdade" para provas, listas, aulas e disciplinas; "trabalho" para o estágio/emprego; "pessoal" para o resto.`,
+    'Tipos de ação:',
+    `- "evento": algo com data (campos titulo, area, tipo_evento entre ${TIPOS_EVENTO.join(', ')}, data, hora_inicio, hora_fim, local, disciplina_id).`,
+    '- "tarefa": algo a fazer/entregar (campos titulo, area, prazo, disciplina_id).',
+    '- "falta": o usuário faltou a uma aula (campos disciplina_id, quantidade = número de aulas, padrão 1).',
+    'Disciplinas (use disciplina_id SOMENTE com um destes ids):',
+    discs,
+    'Não invente horário, local ou disciplina que a frase não diga. Se faltar algo importante, preencha "duvida" com uma pergunta curta.',
+    'Uma frase pode gerar várias ações. Se não houver nada a criar, devolva {"acoes": []}.',
+    '',
+    `Frase: ${frase}`,
+  ].join('\n');
+}
+
+const asNulo = (v) => (v === undefined || v === null || (typeof v === 'string' && v.trim() === '') ? null : typeof v === 'string' ? v.trim() : v);
+
+function asDisciplina(id, area, ids, avisos) {
+  const d = asNulo(id);
+  if (d === null) return null;
+  if (area !== undefined && area !== 'faculdade') return null; // só vale para Faculdade: descarta sem bloquear
+  if (!ids.has(d)) { avisos.push(AS_NAO_ACHEI); return null; }
+  return d;
+}
+
+function asEvento(a, ctx, ids) {
+  const avisos = [];
+  const area = asNulo(a.area);
+  const dados = {
+    titulo: asNulo(a.titulo), area, tipo: asNulo(a.tipo_evento), data: asNulo(a.data),
+    hora_inicio: asNulo(a.hora_inicio), hora_fim: asNulo(a.hora_fim), local: asNulo(a.local),
+    disciplina_id: asDisciplina(a.disciplina_id, area, ids, avisos),
+  };
+  const erros = validarEvento(dados);
+  if (ehData(dados.data) && dados.data < ctx.hoje) avisos.push('Data no passado.');
+  return { tipo: 'evento', dados, avisos: [...erros, ...avisos], bloqueada: erros.length > 0 };
+}
+
+function asTarefa(a, ctx, ids) {
+  const avisos = [];
+  const area = asNulo(a.area);
+  const dados = { titulo: asNulo(a.titulo), area, status: 'a_fazer', prazo: asNulo(a.prazo), disciplina_id: asDisciplina(a.disciplina_id, area, ids, avisos) };
+  const erros = validarTarefa(dados);
+  return { tipo: 'tarefa', dados, avisos: [...erros, ...avisos], bloqueada: erros.length > 0 };
+}
+
+function asFalta(a, ctx, ids) {
+  const avisos = [];
+  const disciplina_id = asDisciplina(a.disciplina_id, undefined, ids, avisos);
+  if (disciplina_id === null && !avisos.length) avisos.push(AS_NAO_ACHEI);
+  const q = a.quantidade === undefined || a.quantidade === null ? 1 : a.quantidade;
+  const qOk = Number.isInteger(q) && q >= 1 && q <= MAX_FALTAS_ACAO;
+  if (!qOk) avisos.push(`Quantidade de faltas deve ser um inteiro de 1 a ${MAX_FALTAS_ACAO}.`);
+  return { tipo: 'falta', dados: { disciplina_id, quantidade: q }, avisos, bloqueada: disciplina_id === null || !qOk };
+}
+
+const AS_TIPOS = { evento: asEvento, tarefa: asTarefa, falta: asFalta };
+
+function interpretarResposta(texto, ctx) {
+  const falha = { acoes: [], erro: 'Não entendi a resposta do Gemini.', avisoGeral: null };
+  let obj;
+  try { obj = JSON.parse(texto); } catch { return falha; }
+  if (!obj || typeof obj !== 'object' || !Array.isArray(obj.acoes)) return falha;
+  const ids = new Set((ctx.disciplinas || []).map((d) => d.id));
+  const todas = obj.acoes
+    .filter((a) => a && typeof a === 'object' && AS_TIPOS[a.tipo])
+    .map((a) => ({ ...AS_TIPOS[a.tipo](a, ctx, ids), duvida: asNulo(a.duvida) }));
+  if (!todas.length) return { acoes: [], erro: null, avisoGeral: 'Não encontrei nada para criar nessa frase.' };
+  return {
+    acoes: todas.slice(0, MAX_ACOES),
+    erro: null,
+    avisoGeral: todas.length > MAX_ACOES ? `Mostrando só as ${MAX_ACOES} primeiras ações.` : null,
+  };
+}
+
+// Heurística sobre os erros do SDK (conferir os códigos reais no site publicado — plano, Task 4).
+function erroAssistente(e, online) {
+  if (!online) return 'Sem conexão. Tente de novo.';
+  const msg = String((e && e.message) || '');
+  const code = String((e && e.code) || '');
+  const status = e && e.customErrorData && e.customErrorData.status; // AIError do firebase/ai (12.19.0)
+  if (status === 429 || /\b429\b|RESOURCE_EXHAUSTED/i.test(msg) || /resource-exhausted/i.test(code)) return 'Limite gratuito atingido por agora. Tente mais tarde ou crie pelo formulário.';
+  if (code.startsWith('appCheck/') || /app ?check/i.test(msg)) return 'O Firebase recusou a verificação deste site (App Check). Recarregue a página.';
+  return 'Não consegui falar com o Gemini. Tente de novo.';
+}
+
+const asData = (d) => `${AS_DIAS[new Date(d + 'T12:00:00Z').getUTCDay()]}, ${d.slice(8, 10)}/${d.slice(5, 7)}`;
+const asArea = (id) => (AREAS_PADRAO.find((a) => a.id === id) || { nome: id || '?' }).nome;
+
+function resumoAcao(acao, nomeDisciplina) {
+  const d = acao.dados;
+  if (acao.tipo === 'falta') return `Falta · ${(d.disciplina_id && nomeDisciplina(d.disciplina_id)) || 'disciplina?'} · +${d.quantidade}`;
+  const titulo = d.titulo || '(sem título)';
+  if (acao.tipo === 'tarefa') return `Tarefa · ${asArea(d.area)} · ${ehData(d.prazo) ? 'prazo ' + asData(d.prazo) : 'sem prazo'} — ${titulo}`;
+  const quando = [ehData(d.data) ? asData(d.data) : 'sem data', ehHora(d.hora_inicio) ? d.hora_inicio + (ehHora(d.hora_fim) ? '–' + d.hora_fim : '') : null].filter(Boolean).join(' · ');
+  return `Evento · ${asArea(d.area)} · ${quando} — ${titulo}`;
 }
 
 // store.js — acesso ao db do artifact (data/hub/{colecao}/{id}).
@@ -1089,6 +1221,7 @@ TELAS.inicio = (main, h0) => {
   const discs = disciplinasAtivas();
   const invalidos = registrosInvalidos();
 
+  main.append(cardAssistente());
   main.append(h('div', { class: 'grade-inicio' },
     bloco('Próximos 7 dias', prox, 'principal'),
     h('div', { class: 'coluna' },
@@ -1110,6 +1243,148 @@ TELAS.inicio = (main, h0) => {
             h('button', { type: 'button', class: 'btn mini', onclick: () => abrirFormulario(tipo, x) }, 'Editar'),
             h('button', { type: 'button', class: 'btn mini perigo', onclick: () => excluirRegistro(tipo, x) }, 'Excluir'))))), 'alerta') : null)));
 };
+
+// ---------- Assistente (Gemini) ----------
+const AVISO_GEMINI = 'O texto vai para o Gemini (plano gratuito) e pode ser usado pelo Google para melhorar produtos. Não escreva dados sensíveis.';
+const DIAS_EXTENSO = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+estado.assistente = { texto: '', enviando: false, cartoes: [], mensagem: null };
+const nomeDisciplina = (id) => buscar('disciplinas', id)?.nome || null;
+const pendentes = () => estado.assistente.cartoes.filter((c) => c.status === 'pendente');
+
+// Redesenha só o card (o resto da tela não muda e o foco do campo é mantido).
+function atualizarAssistente() {
+  const atual = $('section.assistente');
+  if (!atual) return;
+  const focado = document.activeElement === atual.querySelector('textarea');
+  const novo = cardAssistente();
+  atual.replaceWith(novo);
+  if (focado) novo.querySelector('textarea')?.focus();
+}
+
+function finalizarSeVazio() {
+  const A = estado.assistente;
+  if (!pendentes().length && !A.enviando) A.texto = '';
+}
+
+async function enviarAssistente() {
+  const A = estado.assistente;
+  const frase = A.texto.trim();
+  if (!frase || A.enviando) return;
+  A.enviando = true; A.mensagem = null;
+  atualizarAssistente();
+  const h0 = hoje();
+  const ctx = { hoje: h0, diaSemana: DIAS_EXTENSO[new Date(h0 + 'T12:00:00Z').getUTCDay()], disciplinas: disciplinasAtivas().map((d) => ({ id: d.id, nome: d.nome })) };
+  try {
+    const r = interpretarResposta(await estado.fb.interpretar(montarPrompt(frase, ctx)), ctx);
+    A.cartoes = r.acoes.map((acao) => ({ acao, status: 'pendente' }));
+    A.mensagem = r.erro || r.avisoGeral;
+  } catch (e) {
+    A.cartoes = [];
+    A.mensagem = erroAssistente(e, navigator.onLine !== false);
+  } finally {
+    A.enviando = false;
+  }
+  atualizarAssistente();
+}
+
+function marcarSalvo(c) {
+  c.status = 'salvo';
+  finalizarSeVazio();
+  atualizarAssistente();
+}
+
+async function salvarCartao(c) {
+  if (c.status !== 'pendente' || c.acao.bloqueada) return;
+  c.status = 'salvando'; // antes do await: um segundo clique não grava de novo
+  atualizarAssistente();
+  try {
+    const { tipo, dados } = c.acao;
+    if (tipo === 'falta') {
+      const d = buscar('disciplinas', dados.disciplina_id);
+      if (!d) throw new Error('disciplina');
+      const novo = ajustarFaltas((d.faltas || 0) + dados.quantidade, 0);
+      await estado.store.atualizar('disciplinas', d.id, { faltas: novo }); // erro propaga: o cartão continua com Salvar
+      d.faltas = novo;
+    } else {
+      await estado.store.criar(COLECAO_DO_TIPO[tipo], dados);
+    }
+    marcarSalvo(c);
+  } catch (e) {
+    c.status = 'pendente';
+    avisar(traduzirErro(e), 'erro');
+    atualizarAssistente();
+  }
+}
+
+async function salvarTodos() {
+  for (const c of pendentes().filter((x) => !x.acao.bloqueada)) await salvarCartao(c);
+}
+
+function descartarCartao(c) {
+  const A = estado.assistente;
+  A.cartoes = A.cartoes.filter((x) => x !== c);
+  finalizarSeVazio();
+  atualizarAssistente();
+}
+
+function editarCartao(c) {
+  if (c.acao.tipo === 'falta') { c.editando = true; atualizarAssistente(); return; }
+  abrirFormulario(c.acao.tipo, null, c.acao.dados, () => marcarSalvo(c));
+}
+
+function aplicarFalta(c, cartao) {
+  const disciplina_id = cartao.querySelector('.af-disc').value || null;
+  const quantidade = Number(cartao.querySelector('.af-qtd').value);
+  const qOk = Number.isInteger(quantidade) && quantidade >= 1 && quantidade <= MAX_FALTAS_ACAO;
+  const avisos = [];
+  if (!disciplina_id) avisos.push('Escolha a disciplina.');
+  if (!qOk) avisos.push(`Quantidade de faltas deve ser um inteiro de 1 a ${MAX_FALTAS_ACAO}.`);
+  c.acao = { ...c.acao, dados: { disciplina_id, quantidade }, avisos, bloqueada: avisos.length > 0 };
+  c.editando = false;
+  atualizarAssistente();
+}
+
+function cartaoAcao(c) {
+  const { acao } = c;
+  const el = h('li', { class: 'cartao-acao' + (c.status === 'salvo' ? ' salvo' : '') },
+    h('strong', { class: 'cartao-resumo' }, resumoAcao(acao, nomeDisciplina)),
+    acao.duvida ? h('small', { class: 'cartao-duvida' }, acao.duvida) : null,
+    acao.avisos.length && c.status !== 'salvo' ? h('ul', { class: 'cartao-avisos' }, acao.avisos.map((x) => h('li', null, x))) : null);
+  if (c.status === 'salvo') { el.append(h('span', { class: 'tag ok' }, 'Salvo ✓')); return el; }
+  if (c.editando) {
+    el.append(h('div', { class: 'acoes' },
+      h('select', { class: 'af-disc', 'aria-label': 'Disciplina' }, h('option', { value: '' }, '— escolha —'),
+        disciplinasAtivas().map((d) => h('option', { value: d.id, selected: d.id === acao.dados.disciplina_id }, d.nome))),
+      h('input', { class: 'af-qtd', type: 'number', min: 1, max: MAX_FALTAS_ACAO, value: acao.dados.quantidade, 'aria-label': 'Quantidade de faltas' }),
+      h('button', { type: 'button', class: 'btn mini', onclick: () => aplicarFalta(c, el) }, 'Aplicar')));
+    return el;
+  }
+  el.append(h('div', { class: 'acoes' },
+    h('button', { type: 'button', class: 'btn mini primario', disabled: acao.bloqueada || c.status !== 'pendente', onclick: () => salvarCartao(c) }, 'Salvar'),
+    h('button', { type: 'button', class: 'btn mini', disabled: c.status !== 'pendente', onclick: () => editarCartao(c) }, 'Editar'),
+    h('button', { type: 'button', class: 'btn mini', disabled: c.status !== 'pendente', onclick: () => descartarCartao(c) }, 'Descartar')));
+  return el;
+}
+
+function cardAssistente() {
+  if (!estado.fb?.interpretar) return bloco('Assistente', textoVazio('Assistente indisponível.'), 'assistente');
+  const A = estado.assistente;
+  const campoTexto = h('textarea', {
+    rows: 1, value: A.texto, placeholder: 'Ex.: cabelo dia 23, 10h', 'aria-label': 'Pedido ao assistente',
+    oninput: (e) => { A.texto = e.target.value; e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; },
+    onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarAssistente(); } },
+  });
+  const salvaveis = pendentes().filter((c) => !c.acao.bloqueada).length;
+  const sec = bloco('Assistente', h('div', { class: 'assistente-corpo' },
+    h('div', { class: 'assistente-entrada' }, campoTexto,
+      h('button', { type: 'button', class: 'btn primario', disabled: A.enviando, onclick: enviarAssistente }, A.enviando ? 'Interpretando…' : 'Enviar')),
+    h('small', { class: 'muted assistente-aviso' }, AVISO_GEMINI),
+    h('p', { class: 'assistente-msg', role: 'status' }, A.mensagem || ''),
+    A.cartoes.length ? h('ul', { class: 'cartoes-acao' }, A.cartoes.map(cartaoAcao)) : null,
+    salvaveis >= 2 ? h('button', { type: 'button', class: 'btn', onclick: salvarTodos }, 'Salvar todos') : null), 'assistente');
+  sec.dataset.assistente = A.enviando ? 'enviando' : 'pronto';
+  return sec;
+}
 
 // ---------- Faculdade ----------
 function cartaoDisciplina(d, h0) {
@@ -1570,7 +1845,7 @@ function fecharFormulario() {
 }
 function escFecha(e) { if (e.key === 'Escape' && !$('.modal')) fecharFormulario(); }
 
-function abrirFormulario(tipo, registro, padroes) {
+function abrirFormulario(tipo, registro, padroes, aoSalvar) {
   $('.painel-form')?.remove();
   const r = { ...(padroes || {}), ...(registro || {}) };
   const editando = Boolean(registro && registro.id);
@@ -1618,6 +1893,7 @@ function abrirFormulario(tipo, registro, padroes) {
       else await estado.store.criar(c, obj);
       fecharFormulario();
       avisar('Salvo');
+      if (aoSalvar) aoSalvar(obj);
     } catch (err) {
       caixaErros.append(h('p', null, traduzirErro(err)), h('button', { type: 'button', class: 'btn mini', onclick: salvar }, 'Tentar de novo'));
     } finally {
@@ -1691,8 +1967,10 @@ async function excluirRegistro(tipo, registro) {
 
 // ---------- inicialização ----------
 // Precisa existir ANTES do <script type="module"> rodar (ele roda antes do DOMContentLoaded).
-window.__dsFirebaseConfig = { config: FIREBASE_CONFIG, versao: FIREBASE_VERSAO };
+window.__dsFirebaseConfig = { config: FIREBASE_CONFIG, versao: FIREBASE_VERSAO, modelo: GEMINI_MODELO, recaptcha: RECAPTCHA_SITE_KEY };
 let firebaseSinalizado = false;
+// A IA chega depois do login (index.html): quando ficar pronta, redesenha para mostrar o campo do assistente.
+document.addEventListener('ds-ia', () => { estado.renderPendente = true; talvezRender(); });
 document.addEventListener('ds-firebase', () => { firebaseSinalizado = true; }, { once: true });
 
 function esperarFirebase(ms) {
@@ -1794,6 +2072,7 @@ else iniciar();
 <script type="module">
 // Carrega o SDK do Firebase (gstatic) e entrega ao hub em window.__dsFirebase.
 const cfg = window.__dsFirebaseConfig;
+let carregarIA = null;
 if (cfg && cfg.config && !window.__dsFirebase) {
   try {
     const B = `https://www.gstatic.com/firebasejs/${cfg.versao}/`;
@@ -1801,6 +2080,33 @@ if (cfg && cfg.config && !window.__dsFirebase) {
     const a = app.initializeApp(cfg.config);
     const au = auth.getAuth(a);
     const db = fst.getFirestore(a);
+    if (cfg.recaptcha && cfg.modelo) carregarIA = async () => {
+      // Assistente: carregado DEPOIS de publicar __dsFirebase (rede lenta não atrasa o login). App Check (reCAPTCHA Enterprise) + Firebase AI Logic. Uma falha aqui não derruba login/Firestore.
+      try {
+        const [ac, fai] = await Promise.all([import(B + 'firebase-app-check.js'), import(B + 'firebase-ai.js')]);
+        ac.initializeAppCheck(a, { provider: new ac.ReCaptchaEnterpriseProvider(cfg.recaptcha), isTokenAutoRefreshEnabled: true });
+        const S = fai.Schema;
+        const acao = S.object({
+          properties: {
+            tipo: S.enumString({ enum: ['evento', 'tarefa', 'falta'] }),
+            titulo: S.string(), area: S.enumString({ enum: ['faculdade', 'trabalho', 'pessoal'] }),
+            tipo_evento: S.enumString({ enum: ['prova', 'compromisso', 'prazo', 'outro'] }),
+            data: S.string(), hora_inicio: S.string(), hora_fim: S.string(), local: S.string(),
+            prazo: S.string(), disciplina_id: S.string(), quantidade: S.integer(), duvida: S.string(),
+          },
+          optionalProperties: ['titulo', 'area', 'tipo_evento', 'data', 'hora_inicio', 'hora_fim', 'local', 'prazo', 'disciplina_id', 'quantidade', 'duvida'],
+        });
+        const ia = fai.getAI(a, { backend: new fai.GoogleAIBackend(), useLimitedUseAppCheckTokens: true });
+        const modelo = fai.getGenerativeModel(ia, {
+          model: cfg.modelo,
+          generationConfig: { responseMimeType: 'application/json', responseSchema: S.object({ properties: { acoes: S.array({ items: acao }) } }) },
+        });
+        window.__dsFirebase.interpretar = async (prompt) => (await modelo.generateContent(prompt)).response.text();
+        document.dispatchEvent(new Event('ds-ia'));
+      } catch (e) {
+        window.__dsFirebaseIAErro = String(e && e.message || e);
+      }
+    };
     window.__dsFirebase = {
       entrar: () => auth.signInWithPopup(au, new auth.GoogleAuthProvider()),
       sair: () => auth.signOut(au),
@@ -1816,6 +2122,7 @@ if (cfg && cfg.config && !window.__dsFirebase) {
   }
 }
 document.dispatchEvent(new Event('ds-firebase'));
+if (carregarIA && window.__dsFirebase) carregarIA();
 </script>
 </body>
 </html>

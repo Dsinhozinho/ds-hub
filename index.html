@@ -1038,7 +1038,7 @@ const textoVazio = (texto) => h('p', { class: 'vazio' }, texto);
 function medidorFaltas(d, compacto) {
   const info = faltasInfo(d);
   const marca = compacto ? d.id : null;
-  const nome = h('span', { class: 'falta-nome' }, compacto ? (d.sigla || d.nome) : 'Faltas');
+  const nome = h('span', { class: 'falta-nome' }, compacto ? d.nome : 'Faltas');
   if (info.nivel === null) {
     return h('div', { class: 'falta', 'data-disc': marca }, nome,
       h('span', { class: 'mono' }, `${info.faltas} falta${info.faltas === 1 ? '' : 's'}`),
